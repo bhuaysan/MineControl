@@ -14,6 +14,8 @@ import type {
   MetricSampleDto,
   NotificationSettingsDto,
   OnlinePlayer,
+  PlayerListItemDto,
+  PlayerProfileDto,
   PlayerActionRequest,
   PlayerActionResponse,
   ScheduledTaskDto,
@@ -206,6 +208,16 @@ export const api = {
     }),
   testNotification: () =>
     request<{ ok: true }>("/api/settings/notifications/test", { method: "POST" }),
+
+  // Spieler-Profile
+  listPlayers: () => request<PlayerListItemDto[]>("/api/players"),
+  getPlayer: (key: string) =>
+    request<PlayerProfileDto>(`/api/players/${encodeURIComponent(key)}`),
+  updatePlayerNotes: (key: string, notes: string) =>
+    request<PlayerProfileDto>(`/api/players/${encodeURIComponent(key)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes }),
+    }),
 
   listAudit: () => request<AuditEntryDto[]>("/api/audit"),
 

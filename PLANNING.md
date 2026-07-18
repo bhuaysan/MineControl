@@ -153,13 +153,13 @@ ScheduledTask id, serverId, cron, action (RESTART|COMMAND|BACKUP), payload
 - [x] `server.properties`-Editor mit Formular (nicht nur Rohtext)
 - [x] Server löschen (mit Sicherheitsabfrage, Welt optional behalten)
 
-### Phase 3 — Betrieb & Komfort (Kern-Betrieb ✅)
+### Phase 3 — Betrieb & Komfort ✅ abgeschlossen
 - [x] Backups: manuell + Zeitplan (Cron), Retention, Restore per Klick
 - [x] Geplante Tasks: automatische Restarts, wiederkehrende Befehle (z.B. Broadcast)
 - [x] Metrik-Historie: Spielerzahlen, RAM, CPU über Zeit (Graphen) — *TPS offen*
 - [x] Benachrichtigungen: Discord-Webhook (Server down, Backup/Task fehlgeschlagen) — *E-Mail offen*
 - [x] Datei-Manager für Docker-Server (Volumes browsen, Dateien editieren/hochladen)
-- [ ] Spieler-Profile: Playtime, Sessions-Historie, Admin-Notizen, Ban-Historie
+- [x] Spieler-Profile: Playtime, Sessions-Historie, Admin-Notizen, Ban-Historie
 
 ### Phase 4 — Ausbau
 - [ ] Plugin-/Mod-Verwaltung: Suche & Install via **Modrinth-API** (offene API, gut dokumentiert)

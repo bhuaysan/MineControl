@@ -1,7 +1,7 @@
 import type { ServerDto } from "@minecontrol/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
 import { BackupsPanel } from "../components/BackupsPanel.js";
 import { ConsoleView } from "../components/ConsoleView.js";
@@ -285,10 +285,13 @@ export function ServerDetailPage() {
                   key={p.uuid ?? p.name}
                   className="flex items-center justify-between py-2 text-sm"
                 >
-                  <span className="flex items-center gap-2">
+                  <Link
+                    to={`/players/${encodeURIComponent(p.name)}`}
+                    className="flex items-center gap-2 hover:text-status-online"
+                  >
                     <PlayerAvatar name={p.name} uuid={p.uuid} size={24} />
                     {p.name}
-                  </span>
+                  </Link>
                   <div className="flex items-center gap-3">
                     <span className="text-neutral-500">
                       {formatDuration(p.sessionSeconds)}

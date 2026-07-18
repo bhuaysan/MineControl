@@ -3,6 +3,7 @@ import { DockerAdapter } from "../../adapters/docker.js";
 import { createAdapter } from "../../adapters/registry.js";
 import { prisma } from "../../db.js";
 import { notifyServerDown } from "../notifications/service.js";
+import { reconcileSessions } from "../players/service.js";
 
 /** Letzter bekannter Zustand je Server — für Down-Erkennung. */
 const prevStates = new Map<string, ServerState>();
@@ -58,6 +59,16 @@ async function sampleAll(): Promise<void> {
           ramMaxMb,
         },
       });
+
+      // Spieler-Sessions fortschreiben: online → Namen abgleichen, offline → schließen.
+      try {
+        const names = status.online
+          ? (await adapter.getPlayers()).map((p) => p.name)
+          : [];
+        await reconcileSessions(server.id, names);
+      } catch (err) {
+        console.error(`Session-Tracking für ${server.name} fehlgeschlagen:`, err);
+      }
 
       // Down-Erkennung: ONLINE → OFFLINE/ERROR meldet (außer bei manuellem Stop).
       const prev = prevStates.get(server.id);

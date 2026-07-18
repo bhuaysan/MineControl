@@ -270,6 +270,54 @@ export interface UpdateNotificationSettingsRequest {
   notifyTaskFailed?: boolean;
 }
 
+// ── Phase 3: Spieler-Profile ─────────────────────────────────────────────────
+
+/** Spieler in der Übersichtsliste (/players). */
+export interface PlayerListItemDto {
+  /** Schlüssel des Spielers (= Name, solange keine UUID bekannt). */
+  key: string;
+  name: string;
+  lastSeen: string;
+  totalPlaytimeSeconds: number;
+  online: boolean;
+}
+
+/** Eine einzelne Spiel-Session. */
+export interface PlayerSessionDto {
+  serverId: string;
+  serverName?: string;
+  joinedAt: string;
+  leftAt?: string;
+  seconds: number;
+}
+
+/** Ein moderationsrelevantes Ereignis (aus dem Audit-Log). */
+export interface PlayerHistoryEntryDto {
+  action: string;
+  serverName?: string;
+  timestamp: string;
+  reason?: string;
+}
+
+/** Vollständiges Spieler-Profil (/players/:key). */
+export interface PlayerProfileDto {
+  key: string;
+  name: string;
+  firstSeen: string;
+  lastSeen: string;
+  notes?: string;
+  totalPlaytimeSeconds: number;
+  sessionCount: number;
+  online: boolean;
+  currentServerId?: string;
+  recentSessions: PlayerSessionDto[];
+  history: PlayerHistoryEntryDto[];
+}
+
+export interface UpdatePlayerNotesRequest {
+  notes: string;
+}
+
 /** Ein Eintrag im Audit-Log. */
 export interface AuditEntryDto {
   id: string;

@@ -12,6 +12,7 @@ import { fileRoutes } from "./modules/files/routes.js";
 import { metricRoutes } from "./modules/metrics/routes.js";
 import { startMetricSampler } from "./modules/metrics/service.js";
 import { notificationRoutes } from "./modules/notifications/routes.js";
+import { playerRoutes } from "./modules/players/routes.js";
 import { serverRoutes } from "./modules/servers/routes.js";
 import { taskRoutes } from "./modules/tasks/routes.js";
 import { startScheduler } from "./modules/tasks/service.js";
@@ -45,6 +46,7 @@ async function main(): Promise<void> {
   await app.register(taskRoutes);
   await app.register(metricRoutes);
   await app.register(notificationRoutes);
+  await app.register(playerRoutes);
   await registerWebsocket(app);
 
   // Hintergrunddienste: geplante Tasks (cron) + periodische Metrik-Erfassung.

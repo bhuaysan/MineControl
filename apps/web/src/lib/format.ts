@@ -7,6 +7,17 @@ export function formatDuration(seconds?: number): string {
   return `${m}m`;
 }
 
+/** Formatiert eine Spielzeit als „3d 4h" / „4h 12m" / „12m" / „< 1m". */
+export function formatPlaytime(seconds?: number): string {
+  if (!seconds || seconds < 60) return seconds ? "< 1m" : "–";
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
 /** Formatiert Bytes als „1,4 GB" / „720 MB" / „512 KB". */
 export function formatBytes(bytes?: number): string {
   if (bytes == null) return "–";

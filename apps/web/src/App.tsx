@@ -9,7 +9,8 @@ import { AddServerPage } from "./pages/AddServerPage.js";
 import { AuditPage } from "./pages/AuditPage.js";
 import { DashboardPage } from "./pages/DashboardPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
-import { PlaceholderPage } from "./pages/PlaceholderPage.js";
+import { PlayerProfilePage } from "./pages/PlayerProfilePage.js";
+import { PlayersPage } from "./pages/PlayersPage.js";
 import { ServerDetailPage } from "./pages/ServerDetailPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
 import { UsersPage } from "./pages/UsersPage.js";
@@ -74,7 +75,15 @@ function AppRoutes() {
         path="/players"
         element={
           <RequireAuth>
-            <PlaceholderPage title="Spieler" />
+            <PlayersPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/players/:key"
+        element={
+          <RequireAuth>
+            <PlayerProfilePage />
           </RequireAuth>
         }
       />
