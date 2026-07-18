@@ -135,14 +135,14 @@ ScheduledTask id, serverId, cron, action (RESTART|COMMAND|BACKUP), payload
 
 ## 5. Features
 
-### Phase 1 — MVP „Sehen & Steuern"
-- [ ] Login, User-Verwaltung, Rollen (Admin/Moderator/Viewer)
-- [ ] Server hinzufügen: **extern** (Host, Port, RCON-Daten) — der einfachere Adapter zuerst
-- [ ] Dashboard: alle Server mit Status, Version, MOTD, Spieleranzahl (Live via WebSocket)
-- [ ] Server-Detailseite: Online-Spieler mit Köpfen (Avatar via `mc-heads.net`/`crafatar`)
-- [ ] Befehle senden (RCON) + Antwort anzeigen
-- [ ] Spieler-Aktionen per Klick: Kick, Ban/Unban, Whitelist add/remove, OP/De-OP
-- [ ] Audit-Log: wer hat wann was gemacht
+### Phase 1 — MVP „Sehen & Steuern" ✅ abgeschlossen
+- [x] Login, User-Verwaltung, Rollen (Admin/Moderator/Viewer)
+- [x] Server hinzufügen: **extern** (Host, Port, RCON-Daten) — der einfachere Adapter zuerst
+- [x] Dashboard: alle Server mit Status, Version, MOTD, Spieleranzahl (Live via WebSocket)
+- [x] Server-Detailseite: Online-Spieler mit Köpfen (Avatar via `mc-heads.net`/`crafatar`)
+- [x] Befehle senden (RCON) + Antwort anzeigen
+- [x] Spieler-Aktionen per Klick: Kick, Ban/Unban, Whitelist add/remove, OP/De-OP
+- [x] Audit-Log: wer hat wann was gemacht
 
 ### Phase 2 — Docker: eigene Server erstellen
 - [ ] Server-Erstellen-Wizard: Edition (Paper/Vanilla/Forge/Fabric), MC-Version, RAM,
