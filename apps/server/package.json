@@ -20,6 +20,7 @@
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^10.1.0",
+    "@fastify/multipart": "^10.1.0",
     "@fastify/websocket": "^11.1.0",
     "@minecontrol/shared": "workspace:*",
     "@prisma/client": "^6.3.1",

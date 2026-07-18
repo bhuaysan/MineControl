@@ -5,6 +5,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
 import { BackupsPanel } from "../components/BackupsPanel.js";
 import { ConsoleView } from "../components/ConsoleView.js";
+import { FilesPanel } from "../components/FilesPanel.js";
 import { MetricHistoryChart } from "../components/MetricHistoryChart.js";
 import { PlayerActionMenu } from "../components/PlayerActions.js";
 import { PlayerAvatar } from "../components/PlayerAvatar.js";
@@ -17,7 +18,14 @@ import { serversQueryKey } from "../hooks/useServers.js";
 import { api } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
 
-type Tab = "overview" | "console" | "players" | "backups" | "tasks" | "settings";
+type Tab =
+  | "overview"
+  | "console"
+  | "players"
+  | "files"
+  | "backups"
+  | "tasks"
+  | "settings";
 
 export function ServerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -101,6 +109,7 @@ export function ServerDetailPage() {
   const tabs: [Tab, string][] = [["overview", "Übersicht"]];
   if (hasConsole) tabs.push(["console", "Konsole"]);
   tabs.push(["players", `Spieler (${server.status.players.online})`]);
+  if (isDocker && can("MODERATOR")) tabs.push(["files", "Dateien"]);
   if (isDocker) tabs.push(["backups", "Backups"]);
   if (showTasks) tabs.push(["tasks", "Zeitpläne"]);
   if (hasSettings) tabs.push(["settings", "Einstellungen"]);
@@ -244,6 +253,10 @@ export function ServerDetailPage() {
 
       {tab === "console" && hasConsole && (
         <ConsoleView serverId={server.id} canInput={can("MODERATOR") && canRcon} />
+      )}
+
+      {tab === "files" && isDocker && can("MODERATOR") && (
+        <FilesPanel serverId={server.id} />
       )}
 
       {tab === "backups" && isDocker && <BackupsPanel serverId={server.id} />}

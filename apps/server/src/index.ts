@@ -1,5 +1,6 @@
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import websocket from "@fastify/websocket";
 import Fastify from "fastify";
 import { config } from "./config.js";
@@ -7,6 +8,7 @@ import { prisma } from "./db.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { auditRoutes } from "./modules/audit/routes.js";
 import { backupRoutes } from "./modules/backups/routes.js";
+import { fileRoutes } from "./modules/files/routes.js";
 import { metricRoutes } from "./modules/metrics/routes.js";
 import { startMetricSampler } from "./modules/metrics/service.js";
 import { notificationRoutes } from "./modules/notifications/routes.js";
@@ -29,6 +31,8 @@ async function main(): Promise<void> {
   await app.register(cookie, { secret: config.sessionSecret });
   await app.register(cors, { origin: config.webOrigin, credentials: true });
   await app.register(websocket);
+  // Datei-Uploads (Datei-Manager) — Obergrenze 50 MB je Datei.
+  await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
 
   app.get("/api/health", async () => ({ status: "ok" }));
 
@@ -37,6 +41,7 @@ async function main(): Promise<void> {
   await app.register(userRoutes);
   await app.register(auditRoutes);
   await app.register(backupRoutes);
+  await app.register(fileRoutes);
   await app.register(taskRoutes);
   await app.register(metricRoutes);
   await app.register(notificationRoutes);

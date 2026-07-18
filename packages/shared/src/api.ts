@@ -222,6 +222,36 @@ export interface MetricSampleDto {
   ramMaxMb?: number;
 }
 
+// ── Phase 3: Datei-Manager (nur Docker) ──────────────────────────────────────
+
+export type FileEntryType = "dir" | "file" | "other";
+
+export interface FileEntryDto {
+  name: string;
+  type: FileEntryType;
+  /** Größe in Bytes (nur bei Dateien aussagekräftig). */
+  size: number;
+  /** Letzte Änderung (ISO-8601). */
+  mtime: string;
+}
+
+/** Verzeichnisinhalt relativ zu `/data`. */
+export interface FileListResponse {
+  /** Aktueller Pfad relativ zu `/data` (führender „/", z. B. „/config"). */
+  path: string;
+  entries: FileEntryDto[];
+}
+
+/** Inhalt einer Textdatei. */
+export interface FileContentResponse {
+  path: string;
+  content: string;
+  size: number;
+}
+
+/** Maximale Größe editierbarer/lesbarer Textdateien (Bytes). */
+export const MAX_EDITABLE_FILE_BYTES = 1_048_576;
+
 // ── Phase 3: Benachrichtigungen (Discord) ────────────────────────────────────
 
 export interface NotificationSettingsDto {

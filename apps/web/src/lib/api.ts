@@ -2,6 +2,8 @@ import type {
   AuditEntryDto,
   BackupDto,
   ConnectionTestResult,
+  FileContentResponse,
+  FileListResponse,
   CreateDockerServerRequest,
   CreateExternalServerRequest,
   CreateScheduledTaskRequest,
@@ -144,6 +146,51 @@ export const api = {
     request<ScheduledTaskDto>(`/api/servers/${id}/tasks/${taskId}/run`, {
       method: "POST",
     }),
+
+  // Datei-Manager
+  listFiles: (id: string, path: string) =>
+    request<FileListResponse>(
+      `/api/servers/${id}/files?path=${encodeURIComponent(path)}`,
+    ),
+  readFile: (id: string, path: string) =>
+    request<FileContentResponse>(
+      `/api/servers/${id}/files/content?path=${encodeURIComponent(path)}`,
+    ),
+  writeFile: (id: string, path: string, content: string) =>
+    request<{ ok: true }>(`/api/servers/${id}/files/content`, {
+      method: "PUT",
+      body: JSON.stringify({ path, content }),
+    }),
+  makeDir: (id: string, path: string) =>
+    request<{ ok: true }>(`/api/servers/${id}/files/mkdir`, {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+  deleteFile: (id: string, path: string) =>
+    request<{ ok: true }>(
+      `/api/servers/${id}/files?path=${encodeURIComponent(path)}`,
+      { method: "DELETE" },
+    ),
+  uploadFile: async (id: string, dir: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(
+      `/api/servers/${id}/files/upload?path=${encodeURIComponent(dir)}`,
+      { method: "POST", credentials: "include", body: form },
+    );
+    if (!res.ok) {
+      let message = res.statusText;
+      try {
+        const body = (await res.json()) as { message?: string };
+        if (body.message) message = body.message;
+      } catch {
+        /* kein JSON */
+      }
+      throw new ApiRequestError(res.status, message);
+    }
+  },
+  downloadFileUrl: (id: string, path: string) =>
+    `/api/servers/${id}/files/download?path=${encodeURIComponent(path)}`,
 
   // Metrik-Historie
   metricHistory: (id: string, range: string) =>
