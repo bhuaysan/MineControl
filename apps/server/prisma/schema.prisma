@@ -1,0 +1,84 @@
+// MineControl — Datenmodell (siehe PLANNING.md §4)
+// Phase 1 nutzt User, Server und AuditLog; die übrigen Modelle sind für
+// spätere Phasen vorbereitet, damit Migrationen früh stabil sind.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  VIEWER
+  MODERATOR
+  ADMIN
+}
+
+enum ServerType {
+  DOCKER
+  EXTERNAL
+}
+
+model User {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  passwordHash String
+  role         Role       @default(VIEWER)
+  createdAt    DateTime   @default(now())
+  auditLogs    AuditLog[]
+}
+
+model Server {
+  id                String     @id @default(cuid())
+  name              String
+  type              ServerType
+  edition           String     @default("UNKNOWN")
+  host              String
+  port              Int        @default(25565)
+  // RCON — Passwort verschlüsselt (nicht gehasht, wird zur Laufzeit gebraucht)
+  rconPort          Int?
+  rconPasswordEnc   String?
+  // Docker (Phase 2)
+  dockerContainerId String?
+  dockerConfig      String? // JSON
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  auditLogs AuditLog[]
+  sessions  PlayerSession[]
+}
+
+model Player {
+  uuid          String          @id
+  lastKnownName String
+  firstSeen     DateTime        @default(now())
+  lastSeen      DateTime        @default(now())
+  notes         String?
+  sessions      PlayerSession[]
+}
+
+model PlayerSession {
+  id       String    @id @default(cuid())
+  player   Player    @relation(fields: [playerId], references: [uuid])
+  playerId String
+  server   Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  serverId String
+  joinedAt DateTime  @default(now())
+  leftAt   DateTime?
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+  server    Server?  @relation(fields: [serverId], references: [id], onDelete: SetNull)
+  serverId  String?
+  action    String
+  details   String? // JSON
+  timestamp DateTime @default(now())
+
+  @@index([timestamp])
+}

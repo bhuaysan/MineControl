@@ -1,0 +1,24 @@
+{
+  "name": "minecontrol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Webbasiertes Verwaltungstool für Minecraft-Server (Docker & extern)",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:server": "pnpm --filter @minecontrol/server dev",
+    "dev:web": "pnpm --filter @minecontrol/web dev",
+    "build": "pnpm --recursive build",
+    "typecheck": "pnpm --recursive typecheck",
+    "lint": "pnpm --recursive lint",
+    "db:generate": "pnpm --filter @minecontrol/server db:generate",
+    "db:migrate": "pnpm --filter @minecontrol/server db:migrate"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}
