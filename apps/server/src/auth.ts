@@ -3,6 +3,7 @@ import { hasRole } from "@minecontrol/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { SESSION_COOKIE } from "./config.js";
 import { prisma } from "./db.js";
+import { verifyToken } from "./modules/tokens/service.js";
 
 /** Im Request abgelegter, authentifizierter Benutzer. */
 export interface AuthUser {
@@ -25,6 +26,23 @@ export async function authenticate(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
+  // 1) Bearer-Token (Automatisierung) hat Vorrang, falls vorhanden.
+  const authHeader = request.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    const identity = await verifyToken(authHeader.slice("Bearer ".length).trim());
+    if (!identity) {
+      return reply.code(401).send({ error: "unauthorized", message: "Token ungültig" });
+    }
+    // Token handelt im Namen seines Besitzers (für Audit-Zuordnung).
+    request.user = {
+      id: identity.userId,
+      username: identity.username,
+      role: identity.role,
+    };
+    return;
+  }
+
+  // 2) Session-Cookie.
   const raw = request.cookies[SESSION_COOKIE];
   if (!raw) {
     return reply.code(401).send({ error: "unauthorized", message: "Nicht angemeldet" });

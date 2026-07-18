@@ -17,6 +17,7 @@ import { playerRoutes } from "./modules/players/routes.js";
 import { serverRoutes } from "./modules/servers/routes.js";
 import { taskRoutes } from "./modules/tasks/routes.js";
 import { startScheduler } from "./modules/tasks/service.js";
+import { tokenRoutes } from "./modules/tokens/routes.js";
 import { userRoutes } from "./modules/users/routes.js";
 import { registerWebsocket } from "./ws/index.js";
 
@@ -49,6 +50,7 @@ async function main(): Promise<void> {
   await app.register(modRoutes);
   await app.register(notificationRoutes);
   await app.register(playerRoutes);
+  await app.register(tokenRoutes);
   await registerWebsocket(app);
 
   // Hintergrunddienste: geplante Tasks (cron) + periodische Metrik-Erfassung.

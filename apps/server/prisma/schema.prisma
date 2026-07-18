@@ -29,6 +29,21 @@ model User {
   role         Role       @default(VIEWER)
   createdAt    DateTime   @default(now())
   auditLogs    AuditLog[]
+  apiTokens    ApiToken[]
+}
+
+// API-Token für Automatisierung (Bearer-Auth). Nur der Hash wird gespeichert.
+model ApiToken {
+  id         String    @id @default(cuid())
+  name       String
+  tokenHash  String    @unique
+  prefix     String
+  role       Role
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
 }
 
 model Server {

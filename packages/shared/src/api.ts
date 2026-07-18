@@ -275,6 +275,32 @@ export interface UpdateNotificationSettingsRequest {
   notifyTaskFailed?: boolean;
 }
 
+// ── Phase 4: API-Tokens ──────────────────────────────────────────────────────
+
+export interface ApiTokenDto {
+  id: string;
+  name: string;
+  role: Role;
+  /** Ersten Zeichen des Tokens (zur Wiedererkennung). */
+  prefix: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  expiresAt?: string;
+}
+
+export interface CreateApiTokenRequest {
+  name: string;
+  role: Role;
+  /** Ablauf in Tagen; ohne Angabe unbegrenzt gültig. */
+  expiresInDays?: number;
+}
+
+/** Antwort beim Anlegen — enthält das Token genau einmal im Klartext. */
+export interface CreateApiTokenResponse {
+  token: string;
+  apiToken: ApiTokenDto;
+}
+
 // ── Phase 4: Modrinth (Plugins/Mods) ─────────────────────────────────────────
 
 /** Ein Suchtreffer aus der Modrinth-Suche. */

@@ -1,22 +1,173 @@
+import type { Role } from "@minecontrol/shared";
+import { ROLES } from "@minecontrol/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../lib/api.js";
+import { formatDateTime, formatRelative } from "../lib/format.js";
 
 export function SettingsPage() {
   const { can } = useAuth();
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <h1 className="mb-6 text-2xl font-bold">Einstellungen</h1>
+    <div className="mx-auto max-w-2xl space-y-6">
+      <h1 className="text-2xl font-bold">Einstellungen</h1>
       {can("ADMIN") ? (
-        <NotificationSettings />
+        <>
+          <NotificationSettings />
+          <ApiTokenSettings />
+        </>
       ) : (
         <p className="text-sm text-neutral-500">
           Einstellungen können nur von Administratoren geändert werden.
         </p>
       )}
     </div>
+  );
+}
+
+function ApiTokenSettings() {
+  const queryClient = useQueryClient();
+  const { data: tokens } = useQuery({ queryKey: ["tokens"], queryFn: api.listTokens });
+
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<Role>("VIEWER");
+  const [expires, setExpires] = useState<number | "">("");
+  const [created, setCreated] = useState<string | null>(null);
+
+  const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["tokens"] });
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      api.createToken({
+        name: name.trim(),
+        role,
+        expiresInDays: expires === "" ? undefined : expires,
+      }),
+    onSuccess: (res) => {
+      setCreated(res.token);
+      setName("");
+      invalidate();
+    },
+  });
+  const revokeMutation = useMutation({
+    mutationFn: (id: string) => api.revokeToken(id),
+    onSuccess: invalidate,
+  });
+
+  const inputClass =
+    "rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm outline-none focus:border-status-online";
+
+  return (
+    <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+      <h2 className="mb-1 font-semibold">API-Tokens</h2>
+      <p className="mb-4 text-sm text-neutral-500">
+        Für Automatisierung: als <code>Authorization: Bearer &lt;token&gt;</code>-Header
+        verwenden. Das Token handelt mit der gewählten Rolle.
+      </p>
+
+      {created && (
+        <div className="mb-4 rounded-md border border-status-online/40 bg-status-online/5 p-3">
+          <p className="mb-1 text-xs text-neutral-400">
+            Neues Token – wird nur jetzt angezeigt, bitte kopieren:
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate rounded bg-neutral-950 px-2 py-1 font-mono text-sm text-status-online">
+              {created}
+            </code>
+            <button
+              onClick={() => void navigator.clipboard?.writeText(created)}
+              className="shrink-0 rounded-md border border-neutral-700 px-2.5 py-1 text-xs hover:bg-neutral-800"
+            >
+              Kopieren
+            </button>
+            <button
+              onClick={() => setCreated(null)}
+              className="shrink-0 text-xs text-neutral-500 hover:text-neutral-300"
+            >
+              Schließen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tokens && tokens.length > 0 && (
+        <ul className="mb-4 divide-y divide-neutral-800">
+          {tokens.map((t) => (
+            <li key={t.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-medium text-neutral-200">{t.name}</span>
+                  <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400">
+                    {t.role}
+                  </span>
+                  <code className="text-xs text-neutral-600">{t.prefix}…</code>
+                </div>
+                <div className="text-xs text-neutral-500">
+                  {t.lastUsedAt ? `zuletzt genutzt ${formatRelative(t.lastUsedAt)}` : "nie genutzt"}
+                  {t.expiresAt ? ` · läuft ab ${formatDateTime(t.expiresAt)}` : ""}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (confirm(`Token „${t.name}" widerrufen?`)) revokeMutation.mutate(t.id);
+                }}
+                className="shrink-0 rounded-md border border-status-error/40 px-2.5 py-1 text-xs text-status-error hover:bg-status-error/10"
+              >
+                Widerrufen
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form
+        onSubmit={(e: FormEvent) => {
+          e.preventDefault();
+          if (name.trim()) createMutation.mutate();
+        }}
+        className="flex flex-wrap items-end gap-2 border-t border-neutral-800 pt-4"
+      >
+        <label className="text-sm">
+          <span className="mb-1 block text-neutral-400">Name</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            placeholder="z. B. Backup-Skript"
+            className={inputClass}
+          />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-neutral-400">Rolle</span>
+          <select value={role} onChange={(e) => setRole(e.target.value as Role)} className={inputClass}>
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-neutral-400">Ablauf (Tage)</span>
+          <input
+            type="number"
+            min={1}
+            value={expires}
+            onChange={(e) => setExpires(e.target.value === "" ? "" : Number(e.target.value))}
+            placeholder="∞"
+            className={`${inputClass} w-24`}
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={createMutation.isPending}
+          className="rounded-md bg-status-online px-4 py-2 text-sm font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
+        >
+          {createMutation.isPending ? "Erstelle…" : "Token erstellen"}
+        </button>
+      </form>
+    </section>
   );
 }
 

@@ -1,7 +1,10 @@
 import type {
+  ApiTokenDto,
   AuditEntryDto,
   BackupDto,
   ConnectionTestResult,
+  CreateApiTokenRequest,
+  CreateApiTokenResponse,
   FileContentResponse,
   FileListResponse,
   CreateDockerServerRequest,
@@ -237,6 +240,16 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ notes }),
     }),
+
+  // API-Tokens
+  listTokens: () => request<ApiTokenDto[]>("/api/tokens"),
+  createToken: (body: CreateApiTokenRequest) =>
+    request<CreateApiTokenResponse>("/api/tokens", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  revokeToken: (id: string) =>
+    request<{ ok: true }>(`/api/tokens/${id}`, { method: "DELETE" }),
 
   listAudit: () => request<AuditEntryDto[]>("/api/audit"),
 
