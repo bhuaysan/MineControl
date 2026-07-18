@@ -168,7 +168,7 @@ ScheduledTask id, serverId, cron, action (RESTART|COMMAND|BACKUP), payload
 - [ ] LuckPerms-Integration für feingranulare In-Game-Berechtigungen
 - [ ] MineControl-Agent für externe Server (Start/Stop, Logs, Dateien)
 - [~] Welt-Verwaltung: **Welt-Download ✅**; mehrere Welten & Pregen-Trigger offen
-- [~] API-Tokens für Automatisierung ✅; **2FA offen**
+- [x] 2FA (TOTP) + API-Tokens für Automatisierung
 
 ---
 
