@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
 import { PlayerActionMenu } from "../components/PlayerActions.js";
+import { PlayerAvatar } from "../components/PlayerAvatar.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 import { serversQueryKey } from "../hooks/useServers.js";
 import { api } from "../lib/api.js";
@@ -31,6 +32,7 @@ export function ServerDetailPage() {
     refetchInterval: 10_000,
   });
 
+  const [tab, setTab] = useState<"overview" | "players">("overview");
   const [command, setCommand] = useState("");
   const [output, setOutput] = useState<string[]>([]);
 
@@ -92,23 +94,109 @@ export function ServerDetailPage() {
         )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="mb-4 flex gap-1 border-b border-neutral-800">
+        {(
+          [
+            ["overview", "Übersicht"],
+            ["players", `Spieler (${server.status.players.online})`],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm transition-colors ${
+              tab === key
+                ? "border-status-online text-neutral-100"
+                : "border-transparent text-neutral-400 hover:text-neutral-200"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "overview" && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+            <h2 className="mb-3 font-semibold">Details</h2>
+            <dl className="space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <dt className="text-neutral-500">MOTD</dt>
+                <dd className="max-w-[60%] truncate">{server.status.motd || "–"}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-neutral-500">Version</dt>
+                <dd>{server.status.version ?? server.edition}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-neutral-500">Spieler</dt>
+                <dd>
+                  {server.status.players.online}
+                  {server.status.players.max ? ` / ${server.status.players.max}` : ""}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-neutral-500">Latenz</dt>
+                <dd>
+                  {server.status.latencyMs != null ? `${server.status.latencyMs} ms` : "–"}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-neutral-500">RCON</dt>
+                <dd>{canRcon ? "verbunden" : "nicht konfiguriert"}</dd>
+              </div>
+            </dl>
+          </section>
+
+          {can("MODERATOR") && canRcon && (
+            <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+              <h2 className="mb-3 font-semibold">Befehl senden (RCON)</h2>
+              {output.length > 0 && (
+                <pre className="mb-3 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-md bg-neutral-950 p-3 font-mono text-xs text-neutral-300">
+                  {output.join("\n")}
+                </pre>
+              )}
+              <form onSubmit={onSendCommand} className="flex gap-2">
+                <span className="self-center text-neutral-600">/</span>
+                <input
+                  value={command}
+                  onChange={(e) => setCommand(e.target.value)}
+                  placeholder="list"
+                  className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono outline-none focus:border-status-online"
+                />
+                <button
+                  type="submit"
+                  disabled={commandMutation.isPending}
+                  className="rounded-md bg-status-online px-4 font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
+                >
+                  Senden
+                </button>
+              </form>
+            </section>
+          )}
+        </div>
+      )}
+
+      {tab === "players" && (
         <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
           <h2 className="mb-3 font-semibold">
-            Spieler online ({server.status.players.online}
+            Online ({server.status.players.online}
             {server.status.players.max ? `/${server.status.players.max}` : ""})
           </h2>
           {players.length === 0 ? (
             <p className="text-sm text-neutral-500">Niemand online.</p>
           ) : (
-            <ul className="space-y-1.5">
+            <ul className="divide-y divide-neutral-800">
               {players.map((p) => (
                 <li
                   key={p.uuid ?? p.name}
-                  className="flex items-center justify-between text-sm"
+                  className="flex items-center justify-between py-2 text-sm"
                 >
-                  <span>🙂 {p.name}</span>
-                  <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-2">
+                    <PlayerAvatar name={p.name} uuid={p.uuid} size={24} />
+                    {p.name}
+                  </span>
+                  <div className="flex items-center gap-3">
                     <span className="text-neutral-500">
                       {formatDuration(p.sessionSeconds)}
                     </span>
@@ -124,51 +212,6 @@ export function ServerDetailPage() {
               ))}
             </ul>
           )}
-        </section>
-
-        <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-          <h2 className="mb-3 font-semibold">Details</h2>
-          <dl className="space-y-1.5 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-neutral-500">MOTD</dt>
-              <dd className="max-w-[60%] truncate">{server.status.motd || "–"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-neutral-500">Latenz</dt>
-              <dd>{server.status.latencyMs != null ? `${server.status.latencyMs} ms` : "–"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-neutral-500">RCON</dt>
-              <dd>{canRcon ? "verbunden" : "nicht konfiguriert"}</dd>
-            </div>
-          </dl>
-        </section>
-      </div>
-
-      {can("MODERATOR") && canRcon && (
-        <section className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-          <h2 className="mb-3 font-semibold">Befehl senden (RCON)</h2>
-          {output.length > 0 && (
-            <pre className="mb-3 max-h-60 overflow-y-auto whitespace-pre-wrap rounded-md bg-neutral-950 p-3 font-mono text-xs text-neutral-300">
-              {output.join("\n")}
-            </pre>
-          )}
-          <form onSubmit={onSendCommand} className="flex gap-2">
-            <span className="self-center text-neutral-600">/</span>
-            <input
-              value={command}
-              onChange={(e) => setCommand(e.target.value)}
-              placeholder="list"
-              className="flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono outline-none focus:border-status-online"
-            />
-            <button
-              type="submit"
-              disabled={commandMutation.isPending}
-              className="rounded-md bg-status-online px-4 font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
-            >
-              Senden
-            </button>
-          </form>
         </section>
       )}
     </div>
