@@ -3,18 +3,21 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
+import { BackupsPanel } from "../components/BackupsPanel.js";
 import { ConsoleView } from "../components/ConsoleView.js";
+import { MetricHistoryChart } from "../components/MetricHistoryChart.js";
 import { PlayerActionMenu } from "../components/PlayerActions.js";
 import { PlayerAvatar } from "../components/PlayerAvatar.js";
 import { ServerActions } from "../components/ServerActions.js";
 import { ServerPropertiesForm } from "../components/ServerPropertiesForm.js";
 import { StatusBadge } from "../components/StatusBadge.js";
+import { TasksPanel } from "../components/TasksPanel.js";
 import { useServerMetrics } from "../hooks/useServerMetrics.js";
 import { serversQueryKey } from "../hooks/useServers.js";
 import { api } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
 
-type Tab = "overview" | "console" | "players" | "settings";
+type Tab = "overview" | "console" | "players" | "backups" | "tasks" | "settings";
 
 export function ServerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -37,6 +40,8 @@ export function ServerDetailPage() {
     (server?.capabilities.includes("LIFECYCLE_START") ?? false) ||
     (server?.capabilities.includes("LIFECYCLE_STOP") ?? false);
   const hasSettings = server?.type === "DOCKER" && can("MODERATOR");
+  const isDocker = server?.type === "DOCKER";
+  const showTasks = isDocker || canRcon;
 
   const playersQuery = useQuery({
     queryKey: ["server", id, "players"],
@@ -96,6 +101,8 @@ export function ServerDetailPage() {
   const tabs: [Tab, string][] = [["overview", "Übersicht"]];
   if (hasConsole) tabs.push(["console", "Konsole"]);
   tabs.push(["players", `Spieler (${server.status.players.online})`]);
+  if (isDocker) tabs.push(["backups", "Backups"]);
+  if (showTasks) tabs.push(["tasks", "Zeitpläne"]);
   if (hasSettings) tabs.push(["settings", "Einstellungen"]);
 
   return (
@@ -201,6 +208,11 @@ export function ServerDetailPage() {
             </section>
           )}
 
+          <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 md:col-span-2">
+            <h2 className="mb-3 font-semibold">Verlauf</h2>
+            <MetricHistoryChart serverId={server.id} />
+          </section>
+
           {can("MODERATOR") && canRcon && !hasConsole && (
             <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
               <h2 className="mb-3 font-semibold">Befehl senden (RCON)</h2>
@@ -233,6 +245,10 @@ export function ServerDetailPage() {
       {tab === "console" && hasConsole && (
         <ConsoleView serverId={server.id} canInput={can("MODERATOR") && canRcon} />
       )}
+
+      {tab === "backups" && isDocker && <BackupsPanel serverId={server.id} />}
+
+      {tab === "tasks" && showTasks && <TasksPanel serverId={server.id} />}
 
       {tab === "settings" && hasSettings && (
         <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">

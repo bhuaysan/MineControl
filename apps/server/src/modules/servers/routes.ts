@@ -29,6 +29,9 @@ import {
   reattachServerStreams,
 } from "../../ws/index.js";
 import { recordAudit } from "../audit/service.js";
+import { deleteAllBackups } from "../backups/service.js";
+import { suppressDownAlert } from "../metrics/service.js";
+import { unscheduleTask } from "../tasks/service.js";
 import {
   destroyDockerServer,
   provisionDockerServer,
@@ -281,6 +284,8 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
       }
       const adapter = createAdapter(server);
       const { action } = parsed.data;
+      // Geplanter Stop/Restart → keine „Server offline"-Meldung auslösen.
+      if (action === "stop" || action === "restart") suppressDownAlert(server.id);
       try {
         if (action === "start") await adapter.start();
         else if (action === "stop") await adapter.stop();
@@ -361,6 +366,13 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
       if (!server) {
         return reply.code(404).send({ error: "not_found", message: "Server nicht gefunden" });
       }
+      // Geplante Tasks des Servers aus dem Scheduler nehmen (DB-Cascade räumt Zeilen).
+      const tasks = await prisma.scheduledTask.findMany({
+        where: { serverId: id },
+        select: { id: true },
+      });
+      for (const task of tasks) unscheduleTask(task.id);
+      await deleteAllBackups(id);
       if (server.type === "DOCKER") {
         detachServerStreams(server.id);
         await destroyDockerServer(server, keepWorld === "true");

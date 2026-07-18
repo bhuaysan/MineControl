@@ -6,7 +6,13 @@ import { config } from "./config.js";
 import { prisma } from "./db.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { auditRoutes } from "./modules/audit/routes.js";
+import { backupRoutes } from "./modules/backups/routes.js";
+import { metricRoutes } from "./modules/metrics/routes.js";
+import { startMetricSampler } from "./modules/metrics/service.js";
+import { notificationRoutes } from "./modules/notifications/routes.js";
 import { serverRoutes } from "./modules/servers/routes.js";
+import { taskRoutes } from "./modules/tasks/routes.js";
+import { startScheduler } from "./modules/tasks/service.js";
 import { userRoutes } from "./modules/users/routes.js";
 import { registerWebsocket } from "./ws/index.js";
 
@@ -30,7 +36,15 @@ async function main(): Promise<void> {
   await app.register(serverRoutes);
   await app.register(userRoutes);
   await app.register(auditRoutes);
+  await app.register(backupRoutes);
+  await app.register(taskRoutes);
+  await app.register(metricRoutes);
+  await app.register(notificationRoutes);
   await registerWebsocket(app);
+
+  // Hintergrunddienste: geplante Tasks (cron) + periodische Metrik-Erfassung.
+  await startScheduler();
+  startMetricSampler();
 
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info(`${signal} empfangen — fahre herunter`);

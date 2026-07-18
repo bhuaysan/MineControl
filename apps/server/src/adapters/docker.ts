@@ -225,6 +225,20 @@ export class DockerAdapter implements ServerAdapter {
     return () => stream.destroy();
   }
 
+  /** Einzelne Momentaufnahme von CPU-%/RAM; `null`, wenn nicht verfügbar. */
+  async sampleStats(): Promise<{
+    cpuPercent: number;
+    ramUsedMb: number;
+    ramMaxMb: number;
+  } | null> {
+    try {
+      const raw = (await this.container().stats({ stream: false })) as unknown;
+      return parseStats(raw as DockerStatsJson);
+    } catch {
+      return null;
+    }
+  }
+
   /** Öffnet eine hijack-fähige Exec-Session (für Datei-Lesen/Schreiben). */
   async exec(cmd: string[], stdin?: string): Promise<string> {
     const container = this.container();

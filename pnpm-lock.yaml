@@ -38,6 +38,9 @@ importers:
       fastify:
         specifier: ^5.2.1
         version: 5.10.0
+      node-cron:
+        specifier: ^4.6.0
+        version: 4.6.0
       rcon-client:
         specifier: ^4.2.5
         version: 4.2.5
@@ -54,6 +57,9 @@ importers:
       '@types/node':
         specifier: ^22.13.1
         version: 22.20.1
+      '@types/node-cron':
+        specifier: ^3.0.11
+        version: 3.0.11
       '@types/tar-stream':
         specifier: ^3.1.4
         version: 3.1.4
@@ -909,6 +915,9 @@ packages:
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
 
+  '@types/node-cron@3.0.11':
+    resolution: {integrity: sha512-0ikrnug3/IyneSHqCBeslAhlK2aBfYek1fGo4bP4QnZPmiqSGRK+Oy7ZMisLWkesffJvQ1cqAcBnJC+8+nxIAg==}
+
   '@types/node@18.19.130':
     resolution: {integrity: sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg==}
 
@@ -1431,6 +1440,10 @@ packages:
   node-addon-api@8.9.0:
     resolution: {integrity: sha512-ekZMeaaIzSQTSpr7X2X3iJM7lTzgnx8ahAG9pJfT/7+14mlEM8ZYQ9cgCDvSSRbReFK0oHli3WrZdCiRsgAT9Q==}
     engines: {node: ^18 || ^20 || >= 21}
+
+  node-cron@4.6.0:
+    resolution: {integrity: sha512-Si/bzYiKRHOB8/a99T2+SDGN582ONDMSTlJr5oCkT6GtnqPjZ2s10eoQRYkW9ZHwjVxONL+W8Fb+qR0AHMQsdg==}
+    engines: {node: '>=20'}
 
   node-fetch-native@1.6.7:
     resolution: {integrity: sha512-g9yhqoedzIUm0nTnTqAQvueMPVOuIY16bqgAJJC8XOOubYFNwz6IER9qs0Gq2Xd0+CecCKFjtdDTMA4u4xG06Q==}
@@ -2418,6 +2431,8 @@ snapshots:
 
   '@types/estree@1.0.9': {}
 
+  '@types/node-cron@3.0.11': {}
+
   '@types/node@18.19.130':
     dependencies:
       undici-types: 5.26.5
@@ -2945,6 +2960,8 @@ snapshots:
   nanoid@3.3.16: {}
 
   node-addon-api@8.9.0: {}
+
+  node-cron@4.6.0: {}
 
   node-fetch-native@1.6.7: {}
 

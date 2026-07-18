@@ -153,11 +153,11 @@ ScheduledTask id, serverId, cron, action (RESTART|COMMAND|BACKUP), payload
 - [x] `server.properties`-Editor mit Formular (nicht nur Rohtext)
 - [x] Server löschen (mit Sicherheitsabfrage, Welt optional behalten)
 
-### Phase 3 — Betrieb & Komfort
-- [ ] Backups: manuell + Zeitplan (Cron), Retention, Restore per Klick
-- [ ] Geplante Tasks: automatische Restarts, wiederkehrende Befehle (z.B. Broadcast)
-- [ ] Metrik-Historie: Spielerzahlen, RAM, TPS über Zeit (Graphen)
-- [ ] Benachrichtigungen: Discord-Webhook / E-Mail (Server down, Backup fehlgeschlagen)
+### Phase 3 — Betrieb & Komfort (Kern-Betrieb ✅)
+- [x] Backups: manuell + Zeitplan (Cron), Retention, Restore per Klick
+- [x] Geplante Tasks: automatische Restarts, wiederkehrende Befehle (z.B. Broadcast)
+- [x] Metrik-Historie: Spielerzahlen, RAM, CPU über Zeit (Graphen) — *TPS offen*
+- [x] Benachrichtigungen: Discord-Webhook (Server down, Backup/Task fehlgeschlagen) — *E-Mail offen*
 - [ ] Datei-Manager für Docker-Server (Volumes browsen, Dateien editieren/hochladen)
 - [ ] Spieler-Profile: Playtime, Sessions-Historie, Admin-Notizen, Ban-Historie
 

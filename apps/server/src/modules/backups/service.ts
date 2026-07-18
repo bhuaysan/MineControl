@@ -1,0 +1,144 @@
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdir, rm, stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { createGunzip, createGzip } from "node:zlib";
+import type { Server } from "@prisma/client";
+import type { Backup } from "@prisma/client";
+import type { BackupDto, BackupTrigger } from "@minecontrol/shared";
+import { containerName, docker } from "../../adapters/dockerClient.js";
+import { createDockerAdapter } from "../../adapters/registry.js";
+import { config } from "../../config.js";
+import { prisma } from "../../db.js";
+
+export function toBackupDto(backup: Backup): BackupDto {
+  return {
+    id: backup.id,
+    serverId: backup.serverId,
+    sizeBytes: backup.sizeBytes,
+    trigger: backup.trigger as BackupTrigger,
+    createdAt: backup.createdAt.toISOString(),
+  };
+}
+
+function backupPath(serverId: string, createdAt: Date): string {
+  const stamp = createdAt.toISOString().replace(/[:.]/g, "-");
+  return join(config.backupDir, serverId, `${stamp}.tar.gz`);
+}
+
+function ensureDocker(server: Server): void {
+  if (server.type !== "DOCKER") {
+    throw new Error("Backups sind nur für Docker-Server verfügbar");
+  }
+}
+
+/**
+ * Erstellt ein Backup des Weltdaten-Volumes (`/data`) als tar.gz auf dem Host.
+ * Bei laufendem Server wird die Welt vorher per RCON auf die Platte geschrieben.
+ */
+export async function createBackup(
+  server: Server,
+  trigger: BackupTrigger,
+  retention?: number,
+): Promise<BackupDto> {
+  ensureDocker(server);
+  const container = docker.getContainer(containerName(server.id));
+
+  // Welt vor dem Archivieren flushen (nur wenn der Server läuft).
+  try {
+    const info = await container.inspect();
+    if (info.State.Running) {
+      await createDockerAdapter(server).sendCommand("save-all flush");
+    }
+  } catch {
+    /* Container fehlt/stopped oder RCON nicht bereit — trotzdem sichern. */
+  }
+
+  const createdAt = new Date();
+  const target = backupPath(server.id, createdAt);
+  await mkdir(dirname(target), { recursive: true });
+
+  // getArchive(/data) liefert einen Tar-Stream → gzip → Datei.
+  const archive = (await container.getArchive({
+    path: "/data",
+  })) as unknown as NodeJS.ReadableStream;
+  await pipeline(archive, createGzip(), createWriteStream(target));
+
+  const { size } = await stat(target);
+  const backup = await prisma.backup.create({
+    data: { serverId: server.id, path: target, sizeBytes: size, trigger },
+  });
+
+  if (retention && retention > 0) await applyRetention(server.id, retention);
+  return toBackupDto(backup);
+}
+
+/** Löscht die ältesten Backups, sodass nur `keep` neueste übrig bleiben. */
+export async function applyRetention(serverId: string, keep: number): Promise<void> {
+  const stale = await prisma.backup.findMany({
+    where: { serverId },
+    orderBy: { createdAt: "desc" },
+    skip: keep,
+  });
+  for (const backup of stale) {
+    await rm(backup.path, { force: true }).catch(() => {});
+    await prisma.backup.delete({ where: { id: backup.id } });
+  }
+}
+
+export async function listBackups(serverId: string): Promise<BackupDto[]> {
+  const backups = await prisma.backup.findMany({
+    where: { serverId },
+    orderBy: { createdAt: "desc" },
+  });
+  return backups.map(toBackupDto);
+}
+
+/**
+ * Spielt ein Backup zurück: Server stoppen (falls läuft) → Archiv ins Volume
+ * entpacken → Server wieder starten, falls er vorher lief. Vorhandene Dateien
+ * werden überschrieben (seither hinzugekommene Dateien bleiben bestehen).
+ */
+export async function restoreBackup(server: Server, backupId: string): Promise<void> {
+  ensureDocker(server);
+  const backup = await prisma.backup.findFirst({
+    where: { id: backupId, serverId: server.id },
+  });
+  if (!backup) throw new Error("Backup nicht gefunden");
+
+  const container = docker.getContainer(containerName(server.id));
+  let wasRunning = false;
+  try {
+    const info = await container.inspect();
+    wasRunning = info.State.Running === true;
+  } catch {
+    throw new Error("Container existiert nicht mehr");
+  }
+
+  if (wasRunning) await container.stop({ t: 60 });
+
+  // gunzip → putArchive nach „/" (Tar-Einträge sind mit `data/` präfixiert).
+  await container.putArchive(
+    createReadStream(backup.path).pipe(createGunzip()),
+    { path: "/" },
+  );
+
+  if (wasRunning) await container.start();
+}
+
+export async function deleteBackup(server: Server, backupId: string): Promise<void> {
+  const backup = await prisma.backup.findFirst({
+    where: { id: backupId, serverId: server.id },
+  });
+  if (!backup) throw new Error("Backup nicht gefunden");
+  await rm(backup.path, { force: true }).catch(() => {});
+  await prisma.backup.delete({ where: { id: backup.id } });
+}
+
+/** Entfernt alle Backup-Dateien eines Servers (beim Server-Löschen). */
+export async function deleteAllBackups(serverId: string): Promise<void> {
+  await rm(join(config.backupDir, serverId), { recursive: true, force: true }).catch(
+    () => {},
+  );
+  await prisma.backup.deleteMany({ where: { serverId } });
+}

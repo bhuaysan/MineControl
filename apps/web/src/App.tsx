@@ -11,6 +11,7 @@ import { DashboardPage } from "./pages/DashboardPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { PlaceholderPage } from "./pages/PlaceholderPage.js";
 import { ServerDetailPage } from "./pages/ServerDetailPage.js";
+import { SettingsPage } from "./pages/SettingsPage.js";
 import { UsersPage } from "./pages/UsersPage.js";
 
 const queryClient = new QueryClient({
@@ -97,7 +98,7 @@ function AppRoutes() {
         path="/settings"
         element={
           <RequireAuth>
-            <PlaceholderPage title="Einstellungen" />
+            <SettingsPage />
           </RequireAuth>
         }
       />

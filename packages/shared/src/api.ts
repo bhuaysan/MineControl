@@ -165,6 +165,81 @@ export interface PlayerActionResponse {
   response: string;
 }
 
+// ── Phase 3: Backups ─────────────────────────────────────────────────────────
+
+export const BACKUP_TRIGGERS = ["MANUAL", "SCHEDULED"] as const;
+export type BackupTrigger = (typeof BACKUP_TRIGGERS)[number];
+
+export interface BackupDto {
+  id: string;
+  serverId: string;
+  sizeBytes: number;
+  trigger: BackupTrigger;
+  createdAt: string;
+}
+
+// ── Phase 3: Geplante Tasks ──────────────────────────────────────────────────
+
+export const TASK_ACTIONS = ["RESTART", "COMMAND", "BACKUP"] as const;
+export type TaskAction = (typeof TASK_ACTIONS)[number];
+
+export interface ScheduledTaskDto {
+  id: string;
+  serverId: string;
+  name: string;
+  cron: string;
+  action: TaskAction;
+  /** Bei COMMAND: `{ command }`, bei BACKUP: `{ retention }`. */
+  payload?: Record<string, unknown>;
+  enabled: boolean;
+  lastRunAt?: string;
+  lastError?: string;
+  createdAt: string;
+}
+
+export interface CreateScheduledTaskRequest {
+  name: string;
+  cron: string;
+  action: TaskAction;
+  payload?: Record<string, unknown>;
+  enabled?: boolean;
+}
+
+export interface UpdateScheduledTaskRequest {
+  name?: string;
+  cron?: string;
+  payload?: Record<string, unknown>;
+  enabled?: boolean;
+}
+
+// ── Phase 3: Metrik-Historie ─────────────────────────────────────────────────
+
+export interface MetricSampleDto {
+  timestamp: string;
+  playersOnline: number;
+  cpuPercent?: number;
+  ramUsedMb?: number;
+  ramMaxMb?: number;
+}
+
+// ── Phase 3: Benachrichtigungen (Discord) ────────────────────────────────────
+
+export interface NotificationSettingsDto {
+  /** Webhook-URL wird nie zurückgegeben — nur, ob eine gesetzt ist. */
+  discordConfigured: boolean;
+  notifyServerDown: boolean;
+  notifyBackupFailed: boolean;
+  notifyTaskFailed: boolean;
+}
+
+export interface UpdateNotificationSettingsRequest {
+  /** Leerer String löscht die Webhook-URL. `undefined` lässt sie unverändert. */
+  discordWebhookUrl?: string;
+  notifyServerDown?: boolean;
+  notifyBackupFailed?: boolean;
+  notifyTaskFailed?: boolean;
+}
+
 /** Ein Eintrag im Audit-Log. */
 export interface AuditEntryDto {
   id: string;

@@ -28,6 +28,8 @@ export const config = {
   port: Number(optional("PORT", "3000")),
   host: optional("HOST", "0.0.0.0"),
   webOrigin: optional("WEB_ORIGIN", "http://localhost:5173"),
+  /** Verzeichnis für Server-Backups (tar.gz je Server). */
+  backupDir: optional("BACKUP_DIR", "./backups"),
   sessionSecret,
   encryptionKey: Buffer.from(encryptionKeyHex, "hex"),
   isProduction: process.env.NODE_ENV === "production",

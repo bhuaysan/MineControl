@@ -19,6 +19,9 @@ build/
 logs/
 *.log
 
+# Server-Backups (Laufzeitdaten)
+backups/
+
 # Editor / OS
 .idea/
 .vscode/

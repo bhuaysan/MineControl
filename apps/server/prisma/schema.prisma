@@ -49,6 +49,56 @@ model Server {
 
   auditLogs AuditLog[]
   sessions  PlayerSession[]
+  metrics   MetricSample[]
+  backups   Backup[]
+  tasks     ScheduledTask[]
+}
+
+// Phase 3 — Betrieb & Komfort
+
+model MetricSample {
+  id            String   @id @default(cuid())
+  server        Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  serverId      String
+  timestamp     DateTime @default(now())
+  playersOnline Int      @default(0)
+  cpuPercent    Float?
+  ramUsedMb     Int?
+  ramMaxMb      Int?
+
+  @@index([serverId, timestamp])
+}
+
+model Backup {
+  id        String   @id @default(cuid())
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  serverId  String
+  path      String
+  sizeBytes Float    @default(0)
+  trigger   String   @default("MANUAL") // MANUAL | SCHEDULED
+  createdAt DateTime @default(now())
+
+  @@index([serverId, createdAt])
+}
+
+model ScheduledTask {
+  id        String    @id @default(cuid())
+  server    Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  serverId  String
+  name      String
+  cron      String
+  action    String // RESTART | COMMAND | BACKUP
+  payload   String? // JSON: { command } bzw. { retention }
+  enabled   Boolean   @default(true)
+  lastRunAt DateTime?
+  lastError String?
+  createdAt DateTime  @default(now())
+}
+
+// Generische App-Einstellungen (z. B. Discord-Webhook).
+model Setting {
+  key   String @id
+  value String
 }
 
 model Player {

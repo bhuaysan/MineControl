@@ -1,18 +1,25 @@
 import type {
   AuditEntryDto,
+  BackupDto,
   ConnectionTestResult,
   CreateDockerServerRequest,
   CreateExternalServerRequest,
+  CreateScheduledTaskRequest,
   CreateUserRequest,
   LifecycleAction,
   LoginRequest,
   MeResponse,
+  MetricSampleDto,
+  NotificationSettingsDto,
   OnlinePlayer,
   PlayerActionRequest,
   PlayerActionResponse,
+  ScheduledTaskDto,
   SendCommandResponse,
   ServerDto,
   ServerPropertiesDto,
+  UpdateNotificationSettingsRequest,
+  UpdateScheduledTaskRequest,
   UpdateUserRequest,
   UserDto,
 } from "@minecontrol/shared";
@@ -105,6 +112,53 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  // Backups
+  listBackups: (id: string) => request<BackupDto[]>(`/api/servers/${id}/backups`),
+  createBackup: (id: string) =>
+    request<BackupDto>(`/api/servers/${id}/backups`, { method: "POST" }),
+  restoreBackup: (id: string, backupId: string) =>
+    request<{ ok: true }>(`/api/servers/${id}/backups/${backupId}/restore`, {
+      method: "POST",
+    }),
+  deleteBackup: (id: string, backupId: string) =>
+    request<{ ok: true }>(`/api/servers/${id}/backups/${backupId}`, {
+      method: "DELETE",
+    }),
+
+  // Geplante Tasks
+  listTasks: (id: string) => request<ScheduledTaskDto[]>(`/api/servers/${id}/tasks`),
+  createTask: (id: string, body: CreateScheduledTaskRequest) =>
+    request<ScheduledTaskDto>(`/api/servers/${id}/tasks`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateTask: (id: string, taskId: string, body: UpdateScheduledTaskRequest) =>
+    request<ScheduledTaskDto>(`/api/servers/${id}/tasks/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteTask: (id: string, taskId: string) =>
+    request<{ ok: true }>(`/api/servers/${id}/tasks/${taskId}`, { method: "DELETE" }),
+  runTask: (id: string, taskId: string) =>
+    request<ScheduledTaskDto>(`/api/servers/${id}/tasks/${taskId}/run`, {
+      method: "POST",
+    }),
+
+  // Metrik-Historie
+  metricHistory: (id: string, range: string) =>
+    request<MetricSampleDto[]>(`/api/servers/${id}/metrics/history?range=${range}`),
+
+  // Benachrichtigungen
+  getNotificationSettings: () =>
+    request<NotificationSettingsDto>("/api/settings/notifications"),
+  updateNotificationSettings: (body: UpdateNotificationSettingsRequest) =>
+    request<NotificationSettingsDto>("/api/settings/notifications", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  testNotification: () =>
+    request<{ ok: true }>("/api/settings/notifications/test", { method: "POST" }),
 
   listAudit: () => request<AuditEntryDto[]>("/api/audit"),
 
