@@ -198,6 +198,7 @@ export const api = {
   },
   downloadFileUrl: (id: string, path: string) =>
     `/api/servers/${id}/files/download?path=${encodeURIComponent(path)}`,
+  worldDownloadUrl: (id: string) => `/api/servers/${id}/world/download`,
 
   // Plugins/Mods (Modrinth)
   searchMods: (id: string, q: string) =>

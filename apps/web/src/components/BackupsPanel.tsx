@@ -40,16 +40,24 @@ export function BackupsPanel({ serverId }: { serverId: string }) {
 
   return (
     <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold">Backups</h2>
         {can("MODERATOR") && (
-          <button
-            onClick={() => createMutation.mutate()}
-            disabled={createMutation.isPending}
-            className="rounded-md bg-status-online px-3 py-1.5 text-sm font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
-          >
-            {createMutation.isPending ? "Sichere…" : "Backup jetzt erstellen"}
-          </button>
+          <div className="flex items-center gap-2">
+            <a
+              href={api.worldDownloadUrl(serverId)}
+              className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+            >
+              ↓ Welt herunterladen
+            </a>
+            <button
+              onClick={() => createMutation.mutate()}
+              disabled={createMutation.isPending}
+              className="rounded-md bg-status-online px-3 py-1.5 text-sm font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
+            >
+              {createMutation.isPending ? "Sichere…" : "Backup jetzt erstellen"}
+            </button>
+          </div>
         )}
       </div>
 
