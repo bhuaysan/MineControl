@@ -1,3 +1,5 @@
+import type { Role } from "@minecontrol/shared";
+import { hasRole } from "@minecontrol/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
@@ -9,13 +11,17 @@ import { DashboardPage } from "./pages/DashboardPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { PlaceholderPage } from "./pages/PlaceholderPage.js";
 import { ServerDetailPage } from "./pages/ServerDetailPage.js";
+import { UsersPage } from "./pages/UsersPage.js";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, retry: 1 } },
 });
 
-/** Leitet unangemeldete Nutzer auf /login, wartet auf den Auth-Check. */
-function RequireAuth({ children }: { children: ReactNode }) {
+/**
+ * Leitet unangemeldete Nutzer auf /login und wartet auf den Auth-Check.
+ * Mit `role` wird zusätzlich eine Mindestrolle verlangt.
+ */
+function RequireAuth({ children, role }: { children: ReactNode; role?: Role }) {
   const { user, loading } = useAuth();
   if (loading) {
     return (
@@ -25,6 +31,13 @@ function RequireAuth({ children }: { children: ReactNode }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
+  if (role && !hasRole(user.role, role)) {
+    return (
+      <AppShell>
+        <p className="text-status-error">Keine Berechtigung für diese Seite.</p>
+      </AppShell>
+    );
+  }
   return <AppShell>{children}</AppShell>;
 }
 
@@ -67,15 +80,15 @@ function AppRoutes() {
       <Route
         path="/users"
         element={
-          <RequireAuth>
-            <PlaceholderPage title="Benutzerverwaltung" />
+          <RequireAuth role="ADMIN">
+            <UsersPage />
           </RequireAuth>
         }
       />
       <Route
         path="/audit"
         element={
-          <RequireAuth>
+          <RequireAuth role="ADMIN">
             <AuditPage />
           </RequireAuth>
         }

@@ -18,6 +18,26 @@ export interface LoginRequest {
   password: string;
 }
 
+/** Benutzer in der Verwaltungsansicht (ohne Passwort-Hash). */
+export interface UserDto {
+  id: string;
+  username: string;
+  role: Role;
+  createdAt: string;
+}
+
+export interface CreateUserRequest {
+  username: string;
+  password: string;
+  role: Role;
+}
+
+/** Rolle und/oder Passwort ändern (beides optional). */
+export interface UpdateUserRequest {
+  role?: Role;
+  password?: string;
+}
+
 /** Server in Listen-/Detailansicht (ohne Secrets wie RCON-Passwort). */
 export interface ServerDto {
   id: string;

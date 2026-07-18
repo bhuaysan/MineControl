@@ -7,6 +7,7 @@ import { prisma } from "./db.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { auditRoutes } from "./modules/audit/routes.js";
 import { serverRoutes } from "./modules/servers/routes.js";
+import { userRoutes } from "./modules/users/routes.js";
 import { registerWebsocket } from "./ws/index.js";
 
 async function main(): Promise<void> {
@@ -27,6 +28,7 @@ async function main(): Promise<void> {
 
   await app.register(authRoutes);
   await app.register(serverRoutes);
+  await app.register(userRoutes);
   await app.register(auditRoutes);
   await registerWebsocket(app);
 

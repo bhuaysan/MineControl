@@ -2,6 +2,7 @@ import type {
   AuditEntryDto,
   ConnectionTestResult,
   CreateExternalServerRequest,
+  CreateUserRequest,
   LoginRequest,
   MeResponse,
   OnlinePlayer,
@@ -9,6 +10,8 @@ import type {
   PlayerActionResponse,
   SendCommandResponse,
   ServerDto,
+  UpdateUserRequest,
+  UserDto,
 } from "@minecontrol/shared";
 
 /** Fehler mit HTTP-Status und Server-Nachricht. */
@@ -81,4 +84,15 @@ export const api = {
     }),
 
   listAudit: () => request<AuditEntryDto[]>("/api/audit"),
+
+  listUsers: () => request<UserDto[]>("/api/users"),
+  createUser: (body: CreateUserRequest) =>
+    request<UserDto>("/api/users", { method: "POST", body: JSON.stringify(body) }),
+  updateUser: (id: string, body: UpdateUserRequest) =>
+    request<UserDto>(`/api/users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteUser: (id: string) =>
+    request<{ ok: true }>(`/api/users/${id}`, { method: "DELETE" }),
 };
