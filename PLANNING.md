@@ -161,14 +161,14 @@ ScheduledTask id, serverId, cron, action (RESTART|COMMAND|BACKUP), payload
 - [x] Datei-Manager für Docker-Server (Volumes browsen, Dateien editieren/hochladen)
 - [x] Spieler-Profile: Playtime, Sessions-Historie, Admin-Notizen, Ban-Historie
 
-### Phase 4 — Ausbau
-- [ ] Plugin-/Mod-Verwaltung: Suche & Install via **Modrinth-API** (offene API, gut dokumentiert)
-- [ ] Modpack-Support im Wizard (CurseForge/Modrinth-Packs via itzg-Image)
+### Phase 4 — Ausbau (in Arbeit)
+- [x] Plugin-/Mod-Verwaltung: Suche & Install via **Modrinth-API** (offene API, gut dokumentiert)
+- [x] Modpack-Support im Wizard (Modrinth-Packs via itzg-Image; CurseForge offen)
 - [ ] Velocity/Bungee-Netzwerk: Proxy + Subserver als Gruppe verwalten
 - [ ] LuckPerms-Integration für feingranulare In-Game-Berechtigungen
 - [ ] MineControl-Agent für externe Server (Start/Stop, Logs, Dateien)
-- [ ] Welt-Verwaltung: mehrere Welten, Welt-Download, Pregen-Trigger
-- [ ] 2FA, API-Tokens für Automatisierung
+- [~] Welt-Verwaltung: **Welt-Download ✅**; mehrere Welten & Pregen-Trigger offen
+- [~] API-Tokens für Automatisierung ✅; **2FA offen**
 
 ---
 
