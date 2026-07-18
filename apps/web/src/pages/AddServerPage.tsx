@@ -95,7 +95,9 @@ function DockerForm() {
   const [seed, setSeed] = useState("");
   const [motd, setMotd] = useState("");
   const [onlineMode, setOnlineMode] = useState(false);
+  const [modpack, setModpack] = useState("");
   const [eula, setEula] = useState(false);
+  const usingModpack = modpack.trim().length > 0;
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -111,6 +113,7 @@ function DockerForm() {
         motd: motd.trim() || undefined,
         onlineMode,
         eula: true,
+        modrinthModpack: modpack.trim() || undefined,
       }),
     onSuccess: (server) => {
       void queryClient.invalidateQueries({ queryKey: serversQueryKey });
@@ -153,11 +156,28 @@ function DockerForm() {
           <input
             value={version}
             onChange={(e) => setVersion(e.target.value)}
-            className={inputClass}
+            disabled={usingModpack}
+            className={`${inputClass} ${usingModpack ? "opacity-50" : ""}`}
             placeholder="LATEST oder 1.21.1"
           />
         </Field>
       </div>
+
+      <Field label="Modrinth-Modpack (optional)">
+        <input
+          value={modpack}
+          onChange={(e) => setModpack(e.target.value)}
+          className={inputClass}
+          placeholder="z. B. cobblemon oder .mrpack-URL"
+        />
+        {usingModpack && (
+          <p className="mt-1 text-xs text-neutral-500">
+            Der Pack bestimmt Loader &amp; Version. Wähle die Edition passend zum
+            Pack-Loader, damit der Plugins/Mods-Tab funktioniert. Der erste Start
+            dauert länger (Pack-Download).
+          </p>
+        )}
+      </Field>
 
       <Field label={`Arbeitsspeicher: ${(memoryMb / 1024).toFixed(1)} GB`}>
         <input

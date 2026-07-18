@@ -96,6 +96,11 @@ export interface CreateDockerServerRequest {
   motd?: string;
   onlineMode?: boolean;
   eula: true;
+  /**
+   * Optional: Modrinth-Modpack (Slug, Projekt-ID oder .mrpack-URL). Wenn gesetzt,
+   * bestimmt der Pack Loader & Version (TYPE/VERSION werden nicht gesetzt).
+   */
+  modrinthModpack?: string;
 }
 
 /** Lifecycle-Aktion auf einem Server (nur Docker kann alle). */

@@ -75,6 +75,7 @@ const createDockerSchema = z.object({
   motd: z.string().max(120).optional(),
   onlineMode: z.boolean().default(false),
   eula: z.literal(true),
+  modrinthModpack: z.string().max(200).optional(),
 });
 
 const lifecycleSchema = z.object({ action: z.enum(LIFECYCLE_ACTIONS) });
@@ -237,6 +238,7 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
             gamemode: data.gamemode,
             motd: data.motd,
             onlineMode: data.onlineMode,
+            modrinthModpack: data.modrinthModpack,
           }),
         },
       });
@@ -260,6 +262,7 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
         gamemode: data.gamemode,
         motd: data.motd,
         onlineMode: data.onlineMode,
+        modrinthModpack: data.modrinthModpack,
       }).catch((err) => {
         request.log.error(err, "Docker-Provisionierung fehlgeschlagen");
       });

@@ -29,6 +29,7 @@ export interface ProvisionParams {
   gamemode?: string;
   motd?: string;
   onlineMode: boolean;
+  modrinthModpack?: string;
 }
 
 /** MB → itzg-Speicherangabe („2G" bzw. „1536M"). */
@@ -68,8 +69,6 @@ async function ensureImage(serverId: string): Promise<void> {
 async function createContainer(server: Server, p: ProvisionParams): Promise<void> {
   const env = [
     "EULA=TRUE",
-    `TYPE=${p.edition}`,
-    `VERSION=${p.version}`,
     `MEMORY=${memoryArg(p.memoryMb)}`,
     "ENABLE_RCON=true",
     `RCON_PORT=${CONTAINER_RCON_PORT}`,
@@ -77,6 +76,13 @@ async function createContainer(server: Server, p: ProvisionParams): Promise<void
     `MOTD=${p.motd ?? server.name}`,
     `ONLINE_MODE=${p.onlineMode ? "TRUE" : "FALSE"}`,
   ];
+  // Modpack: TYPE=MODRINTH aktiviert den Modrinth-Pfad (Pack bestimmt Loader/
+  // Version). Sonst TYPE/VERSION aus dem Wizard.
+  if (p.modrinthModpack) {
+    env.push("TYPE=MODRINTH", `MODRINTH_MODPACK=${p.modrinthModpack}`);
+  } else {
+    env.push(`TYPE=${p.edition}`, `VERSION=${p.version}`);
+  }
   if (p.seed) env.push(`SEED=${p.seed}`);
   if (p.difficulty) env.push(`DIFFICULTY=${p.difficulty}`);
   if (p.gamemode) env.push(`MODE=${p.gamemode}`);
