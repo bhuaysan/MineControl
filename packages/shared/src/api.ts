@@ -270,6 +270,36 @@ export interface UpdateNotificationSettingsRequest {
   notifyTaskFailed?: boolean;
 }
 
+// ── Phase 4: Modrinth (Plugins/Mods) ─────────────────────────────────────────
+
+/** Ein Suchtreffer aus der Modrinth-Suche. */
+export interface ModSearchHitDto {
+  projectId: string;
+  slug: string;
+  title: string;
+  description: string;
+  author: string;
+  downloads: number;
+  iconUrl?: string;
+  projectType: string;
+}
+
+/** Eine installierte Plugin-/Mod-Datei im Container. */
+export interface InstalledModDto {
+  filename: string;
+  sizeBytes: number;
+}
+
+export interface InstallModRequest {
+  projectId: string;
+  /** Optional feste Version; sonst wird die neueste kompatible gewählt. */
+  versionId?: string;
+}
+
+export interface InstallModResponse {
+  filename: string;
+}
+
 // ── Phase 3: Spieler-Profile ─────────────────────────────────────────────────
 
 /** Spieler in der Übersichtsliste (/players). */

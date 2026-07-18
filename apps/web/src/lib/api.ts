@@ -11,7 +11,9 @@ import type {
   LifecycleAction,
   LoginRequest,
   MeResponse,
+  InstalledModDto,
   MetricSampleDto,
+  ModSearchHitDto,
   NotificationSettingsDto,
   OnlinePlayer,
   PlayerListItemDto,
@@ -193,6 +195,23 @@ export const api = {
   },
   downloadFileUrl: (id: string, path: string) =>
     `/api/servers/${id}/files/download?path=${encodeURIComponent(path)}`,
+
+  // Plugins/Mods (Modrinth)
+  searchMods: (id: string, q: string) =>
+    request<ModSearchHitDto[]>(
+      `/api/servers/${id}/mods/search?q=${encodeURIComponent(q)}`,
+    ),
+  listMods: (id: string) => request<InstalledModDto[]>(`/api/servers/${id}/mods`),
+  installMod: (id: string, projectId: string) =>
+    request<{ filename: string }>(`/api/servers/${id}/mods/install`, {
+      method: "POST",
+      body: JSON.stringify({ projectId }),
+    }),
+  deleteMod: (id: string, file: string) =>
+    request<{ ok: true }>(
+      `/api/servers/${id}/mods?file=${encodeURIComponent(file)}`,
+      { method: "DELETE" },
+    ),
 
   // Metrik-Historie
   metricHistory: (id: string, range: string) =>

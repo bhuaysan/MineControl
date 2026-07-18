@@ -7,6 +7,7 @@ import { BackupsPanel } from "../components/BackupsPanel.js";
 import { ConsoleView } from "../components/ConsoleView.js";
 import { FilesPanel } from "../components/FilesPanel.js";
 import { MetricHistoryChart } from "../components/MetricHistoryChart.js";
+import { ModsPanel } from "../components/ModsPanel.js";
 import { PlayerActionMenu } from "../components/PlayerActions.js";
 import { PlayerAvatar } from "../components/PlayerAvatar.js";
 import { ServerActions } from "../components/ServerActions.js";
@@ -23,9 +24,20 @@ type Tab =
   | "console"
   | "players"
   | "files"
+  | "mods"
   | "backups"
   | "tasks"
   | "settings";
+
+const MODDABLE_EDITIONS = [
+  "PAPER",
+  "SPIGOT",
+  "FABRIC",
+  "FORGE",
+  "NEOFORGE",
+  "VELOCITY",
+  "BUNGEECORD",
+];
 
 export function ServerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -50,6 +62,8 @@ export function ServerDetailPage() {
   const hasSettings = server?.type === "DOCKER" && can("MODERATOR");
   const isDocker = server?.type === "DOCKER";
   const showTasks = isDocker || canRcon;
+  const isModdable =
+    isDocker && MODDABLE_EDITIONS.includes(server?.edition ?? "") && can("MODERATOR");
 
   const playersQuery = useQuery({
     queryKey: ["server", id, "players"],
@@ -110,6 +124,9 @@ export function ServerDetailPage() {
   if (hasConsole) tabs.push(["console", "Konsole"]);
   tabs.push(["players", `Spieler (${server.status.players.online})`]);
   if (isDocker && can("MODERATOR")) tabs.push(["files", "Dateien"]);
+  if (isModdable) {
+    tabs.push(["mods", ["PAPER", "SPIGOT", "VELOCITY", "BUNGEECORD"].includes(server.edition) ? "Plugins" : "Mods"]);
+  }
   if (isDocker) tabs.push(["backups", "Backups"]);
   if (showTasks) tabs.push(["tasks", "Zeitpläne"]);
   if (hasSettings) tabs.push(["settings", "Einstellungen"]);
@@ -257,6 +274,10 @@ export function ServerDetailPage() {
 
       {tab === "files" && isDocker && can("MODERATOR") && (
         <FilesPanel serverId={server.id} />
+      )}
+
+      {tab === "mods" && isModdable && (
+        <ModsPanel serverId={server.id} edition={server.edition} />
       )}
 
       {tab === "backups" && isDocker && <BackupsPanel serverId={server.id} />}
