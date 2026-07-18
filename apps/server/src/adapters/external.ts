@@ -1,9 +1,34 @@
-import type { Capability, ServerEdition, ServerStatus } from "@minecontrol/shared";
+import type {
+  Capability,
+  OnlinePlayer,
+  ServerEdition,
+  ServerStatus,
+} from "@minecontrol/shared";
 import { Rcon } from "rcon-client";
 import { motdToText } from "./motd.js";
 import { pingServer } from "./ping.js";
 import { UnsupportedOperationError } from "./types.js";
 import type { ServerAdapter } from "./types.js";
+
+/** Entfernt Minecraft-Farbcodes (§x) aus einem String. */
+function stripColorCodes(text: string): string {
+  return text.replace(/§./g, "");
+}
+
+/**
+ * Parst die Ausgabe von RCON `list`, z. B.
+ * „There are 3 of a max of 20 players online: Steve, Alex, Notch".
+ */
+export function parseListOutput(text: string): OnlinePlayer[] {
+  const clean = stripColorCodes(text);
+  const match = clean.match(/online:\s*(.*)$/i);
+  if (!match || !match[1]) return [];
+  return match[1]
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .map((name) => ({ name }));
+}
 
 export interface ExternalAdapterConfig {
   host: string;
@@ -61,6 +86,19 @@ export class ExternalAdapter implements ServerAdapter {
         players: { online: 0, max: 0, sample: [] },
       };
     }
+  }
+
+  async getPlayers(): Promise<OnlinePlayer[]> {
+    // RCON `list` liefert die zuverlässigste Online-Liste; sonst Ping-Sample.
+    if (this.cfg.rcon) {
+      try {
+        return parseListOutput(await this.sendCommand("list"));
+      } catch {
+        // RCON gerade nicht erreichbar → Fallback unten.
+      }
+    }
+    const status = await this.getStatus();
+    return status.players.sample;
   }
 
   async sendCommand(cmd: string): Promise<string> {

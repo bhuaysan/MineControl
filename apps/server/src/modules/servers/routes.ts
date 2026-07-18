@@ -1,8 +1,11 @@
 import type {
   ConnectionTestResult,
+  OnlinePlayer,
+  PlayerAction,
+  PlayerActionResponse,
   SendCommandResponse,
 } from "@minecontrol/shared";
-import { SERVER_EDITIONS } from "@minecontrol/shared";
+import { PLAYER_ACTIONS, SERVER_EDITIONS } from "@minecontrol/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { ExternalAdapter } from "../../adapters/external.js";
@@ -33,6 +36,40 @@ const testSchema = z.object({
 });
 
 const commandSchema = z.object({ command: z.string().min(1) });
+
+// Minecraft-Namen: 3–16 Zeichen, nur a-z, A-Z, 0-9, _
+const playerNameSchema = z.string().regex(/^[A-Za-z0-9_]{3,16}$/);
+
+const playerActionSchema = z.object({
+  name: playerNameSchema,
+  action: z.enum(PLAYER_ACTIONS),
+  reason: z.string().max(200).optional(),
+});
+
+/** Übersetzt eine Spieler-Aktion in den passenden Minecraft-Befehl. */
+function buildPlayerCommand(
+  action: PlayerAction,
+  name: string,
+  reason?: string,
+): string {
+  const suffix = reason ? ` ${reason}` : "";
+  switch (action) {
+    case "kick":
+      return `kick ${name}${suffix}`;
+    case "ban":
+      return `ban ${name}${suffix}`;
+    case "unban":
+      return `pardon ${name}`;
+    case "whitelist_add":
+      return `whitelist add ${name}`;
+    case "whitelist_remove":
+      return `whitelist remove ${name}`;
+    case "op":
+      return `op ${name}`;
+    case "deop":
+      return `deop ${name}`;
+  }
+}
 
 export async function serverRoutes(app: FastifyInstance): Promise<void> {
   // Alle Server-Routen erfordern Anmeldung.
@@ -121,6 +158,63 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
         details: { name: server.name },
       });
       return reply.send({ ok: true });
+    },
+  );
+
+  // Online-Spieler (via RCON `list`, sonst Ping-Sample) — alle angemeldeten Nutzer.
+  app.get("/api/servers/:id/players", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) {
+      return reply.code(404).send({ error: "not_found", message: "Server nicht gefunden" });
+    }
+    const adapter = createAdapter(server);
+    const players: OnlinePlayer[] = await adapter.getPlayers();
+    return reply.send(players);
+  });
+
+  // Spieler-Aktion (Kick/Ban/Whitelist/OP …) — Moderator+.
+  app.post(
+    "/api/servers/:id/players/action",
+    { preHandler: requireRole("MODERATOR") },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const parsed = playerActionSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "bad_request", message: "Ungültige Eingabe" });
+      }
+      const { name, action, reason } = parsed.data;
+      if (action === "ban" && !reason) {
+        return reply
+          .code(400)
+          .send({ error: "bad_request", message: "Für einen Bann ist ein Grund erforderlich" });
+      }
+
+      const server = await prisma.server.findUnique({ where: { id } });
+      if (!server) {
+        return reply.code(404).send({ error: "not_found", message: "Server nicht gefunden" });
+      }
+      const adapter = createAdapter(server);
+      try {
+        const response = await adapter.sendCommand(
+          buildPlayerCommand(action, name, reason),
+        );
+        await recordAudit({
+          userId: request.user?.id,
+          serverId: server.id,
+          action: `player.${action}`,
+          details: { player: name, reason },
+        });
+        const body: PlayerActionResponse = { response };
+        return reply.send(body);
+      } catch (err) {
+        if (err instanceof UnsupportedOperationError) {
+          return reply.code(422).send({ error: "unsupported", message: err.message });
+        }
+        return reply
+          .code(502)
+          .send({ error: "rcon_failed", message: (err as Error).message });
+      }
     },
   );
 

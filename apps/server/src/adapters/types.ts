@@ -1,4 +1,4 @@
-import type { Capability, ServerStatus } from "@minecontrol/shared";
+import type { Capability, OnlinePlayer, ServerStatus } from "@minecontrol/shared";
 
 /**
  * Gemeinsames Interface für alle verwalteten Server (Docker & extern).
@@ -13,6 +13,7 @@ export interface ServerAdapter {
   /** Für beide Typen verfügbar. */
   getStatus(): Promise<ServerStatus>;
   sendCommand(cmd: string): Promise<string>;
+  getPlayers(): Promise<OnlinePlayer[]>;
 
   /** Welche Fähigkeiten dieser Server aktuell bietet. */
   capabilities(): Capability[];

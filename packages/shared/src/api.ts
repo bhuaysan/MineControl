@@ -55,6 +55,29 @@ export interface SendCommandResponse {
   response: string;
 }
 
+/** Aktionen, die per Klick auf einen Spieler ausgeführt werden können. */
+export const PLAYER_ACTIONS = [
+  "kick",
+  "ban",
+  "unban",
+  "whitelist_add",
+  "whitelist_remove",
+  "op",
+  "deop",
+] as const;
+export type PlayerAction = (typeof PLAYER_ACTIONS)[number];
+
+export interface PlayerActionRequest {
+  name: string;
+  action: PlayerAction;
+  /** Pflicht bei „ban", optional bei „kick". */
+  reason?: string;
+}
+
+export interface PlayerActionResponse {
+  response: string;
+}
+
 /** Ein Eintrag im Audit-Log. */
 export interface AuditEntryDto {
   id: string;

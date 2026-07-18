@@ -4,6 +4,9 @@ import type {
   CreateExternalServerRequest,
   LoginRequest,
   MeResponse,
+  OnlinePlayer,
+  PlayerActionRequest,
+  PlayerActionResponse,
   SendCommandResponse,
   ServerDto,
 } from "@minecontrol/shared";
@@ -68,6 +71,13 @@ export const api = {
     request<SendCommandResponse>(`/api/servers/${id}/command`, {
       method: "POST",
       body: JSON.stringify({ command }),
+    }),
+  getPlayers: (id: string) =>
+    request<OnlinePlayer[]>(`/api/servers/${id}/players`),
+  playerAction: (id: string, body: PlayerActionRequest) =>
+    request<PlayerActionResponse>(`/api/servers/${id}/players/action`, {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
 
   listAudit: () => request<AuditEntryDto[]>("/api/audit"),

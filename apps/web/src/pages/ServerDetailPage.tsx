@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
+import { PlayerActionMenu } from "../components/PlayerActions.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 import { serversQueryKey } from "../hooks/useServers.js";
 import { api } from "../lib/api.js";
@@ -17,6 +18,15 @@ export function ServerDetailPage() {
   const { data: server, isLoading } = useQuery<ServerDto>({
     queryKey: ["server", id],
     queryFn: () => api.getServer(id!),
+    enabled: Boolean(id),
+    refetchInterval: 10_000,
+  });
+
+  const canRcon = server?.capabilities.includes("RCON") ?? false;
+
+  const playersQuery = useQuery({
+    queryKey: ["server", id, "players"],
+    queryFn: () => api.getPlayers(id!),
     enabled: Boolean(id),
     refetchInterval: 10_000,
   });
@@ -57,7 +67,7 @@ export function ServerDetailPage() {
   if (isLoading) return <p className="text-neutral-500">Lade Server…</p>;
   if (!server) return <p className="text-status-error">Server nicht gefunden.</p>;
 
-  const canRcon = server.capabilities.includes("RCON");
+  const players = playersQuery.data ?? [];
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -88,19 +98,28 @@ export function ServerDetailPage() {
             Spieler online ({server.status.players.online}
             {server.status.players.max ? `/${server.status.players.max}` : ""})
           </h2>
-          {server.status.players.sample.length === 0 ? (
+          {players.length === 0 ? (
             <p className="text-sm text-neutral-500">Niemand online.</p>
           ) : (
             <ul className="space-y-1.5">
-              {server.status.players.sample.map((p) => (
+              {players.map((p) => (
                 <li
                   key={p.uuid ?? p.name}
                   className="flex items-center justify-between text-sm"
                 >
                   <span>🙂 {p.name}</span>
-                  <span className="text-neutral-500">
-                    {formatDuration(p.sessionSeconds)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-neutral-500">
+                      {formatDuration(p.sessionSeconds)}
+                    </span>
+                    {can("MODERATOR") && canRcon && (
+                      <PlayerActionMenu
+                        serverId={server.id}
+                        playerName={p.name}
+                        onDone={() => void playersQuery.refetch()}
+                      />
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
