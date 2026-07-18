@@ -27,17 +27,19 @@ import type {
   SendCommandResponse,
   ServerDto,
   ServerPropertiesDto,
+  TwoFactorSetupResponse,
   UpdateNotificationSettingsRequest,
   UpdateScheduledTaskRequest,
   UpdateUserRequest,
   UserDto,
 } from "@minecontrol/shared";
 
-/** Fehler mit HTTP-Status und Server-Nachricht. */
+/** Fehler mit HTTP-Status, Server-Nachricht und (optional) Fehler-Code. */
 export class ApiRequestError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    public readonly code?: string,
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -52,13 +54,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     let message = res.statusText;
+    let code: string | undefined;
     try {
-      const body = (await res.json()) as { message?: string };
+      const body = (await res.json()) as { message?: string; error?: string };
       if (body.message) message = body.message;
+      code = body.error;
     } catch {
       /* kein JSON-Body */
     }
-    throw new ApiRequestError(res.status, message);
+    throw new ApiRequestError(res.status, message, code);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -69,6 +73,21 @@ export const api = {
   login: (body: LoginRequest) =>
     request<MeResponse>("/api/login", { method: "POST", body: JSON.stringify(body) }),
   logout: () => request<{ ok: true }>("/api/logout", { method: "POST" }),
+
+  // Zwei-Faktor-Authentifizierung (TOTP)
+  twoFactorStatus: () => request<{ enabled: boolean }>("/api/2fa/status"),
+  twoFactorSetup: () =>
+    request<TwoFactorSetupResponse>("/api/2fa/setup", { method: "POST" }),
+  twoFactorEnable: (code: string) =>
+    request<{ enabled: boolean }>("/api/2fa/enable", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+  twoFactorDisable: (code: string) =>
+    request<{ enabled: boolean }>("/api/2fa/disable", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
 
   listServers: () => request<ServerDto[]>("/api/servers"),
   getServer: (id: string) => request<ServerDto>(`/api/servers/${id}`),

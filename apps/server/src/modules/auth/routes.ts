@@ -3,13 +3,16 @@ import argon2 from "argon2";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { SESSION_COOKIE, config } from "../../config.js";
+import { decryptSecret } from "../../crypto.js";
 import { prisma } from "../../db.js";
 import { authenticate } from "../../auth.js";
 import { recordAudit } from "../audit/service.js";
+import { verifyToken } from "../twofa/totp.js";
 
 const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
+  code: z.string().optional(),
 });
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
@@ -20,7 +23,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         .code(400)
         .send({ error: "bad_request", message: "Benutzername und Passwort erforderlich" });
     }
-    const { username, password } = parsed.data satisfies LoginRequest;
+    const { username, password, code } = parsed.data satisfies LoginRequest;
 
     const user = await prisma.user.findUnique({ where: { username } });
     // Gegen Timing-Angriffe: bei fehlendem User trotzdem verifizieren.
@@ -35,6 +38,18 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         .send({ error: "unauthorized", message: "Ungültige Anmeldedaten" });
     }
 
+    // Zweiter Faktor, falls aktiviert.
+    if (user.totpEnabled && user.totpSecretEnc) {
+      if (!code) {
+        return reply
+          .code(401)
+          .send({ error: "2fa_required", message: "Bestätigungscode erforderlich" });
+      }
+      if (!verifyToken(decryptSecret(user.totpSecretEnc), code)) {
+        return reply.code(401).send({ error: "2fa_invalid", message: "Code ungültig" });
+      }
+    }
+
     reply.setCookie(SESSION_COOKIE, user.id, {
       httpOnly: true,
       sameSite: "lax",
@@ -46,7 +61,12 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     await recordAudit({ userId: user.id, action: "auth.login" });
 
-    const body: MeResponse = { id: user.id, username: user.username, role: user.role };
+    const body: MeResponse = {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      twoFactorEnabled: user.totpEnabled,
+    };
     return reply.send(body);
   });
 
@@ -57,7 +77,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/api/me", { preHandler: authenticate }, async (request, reply) => {
-    const body: MeResponse = request.user!;
+    const user = await prisma.user.findUnique({ where: { id: request.user!.id } });
+    const body: MeResponse = {
+      ...request.user!,
+      twoFactorEnabled: user?.totpEnabled ?? false,
+    };
     return reply.send(body);
   });
 }

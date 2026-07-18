@@ -11,11 +11,21 @@ export interface MeResponse {
   id: string;
   username: string;
   role: Role;
+  twoFactorEnabled: boolean;
 }
 
 export interface LoginRequest {
   username: string;
   password: string;
+  /** TOTP-Code, falls für den Benutzer 2FA aktiv ist. */
+  code?: string;
+}
+
+/** Antwort auf POST /api/2fa/setup — Secret + QR zur Einrichtung. */
+export interface TwoFactorSetupResponse {
+  secret: string;
+  otpauthUri: string;
+  qrDataUrl: string;
 }
 
 /** Benutzer in der Verwaltungsansicht (ohne Passwort-Hash). */

@@ -8,6 +8,8 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [needCode, setNeedCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -16,12 +18,19 @@ export function LoginPage() {
     setError(null);
     setBusy(true);
     try {
-      await login(username, password);
+      await login(username, password, needCode ? code : undefined);
       navigate("/", { replace: true });
     } catch (err) {
-      setError(
-        err instanceof ApiRequestError ? err.message : "Anmeldung fehlgeschlagen",
-      );
+      if (err instanceof ApiRequestError && err.code === "2fa_required") {
+        setNeedCode(true); // Passwort ok → jetzt Code abfragen.
+      } else if (err instanceof ApiRequestError && err.code === "2fa_invalid") {
+        setError("Bestätigungscode ungültig");
+      } else {
+        setNeedCode(false);
+        setError(
+          err instanceof ApiRequestError ? err.message : "Anmeldung fehlgeschlagen",
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -62,6 +71,25 @@ export function LoginPage() {
           className="mb-4 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 outline-none focus:border-status-online"
         />
 
+        {needCode && (
+          <>
+            <label className="mb-1 block text-sm text-neutral-400" htmlFor="code">
+              Bestätigungscode (2FA)
+            </label>
+            <input
+              id="code"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              autoFocus
+              placeholder="000000"
+              className="mb-4 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono tracking-widest outline-none focus:border-status-online"
+            />
+          </>
+        )}
+
         {error && <p className="mb-4 text-sm text-status-error">{error}</p>}
 
         <button
@@ -69,7 +97,7 @@ export function LoginPage() {
           disabled={busy}
           className="w-full rounded-md bg-status-online py-2 font-medium text-neutral-950 transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {busy ? "Anmelden…" : "Anmelden"}
+          {busy ? "Anmelden…" : needCode ? "Bestätigen" : "Anmelden"}
         </button>
       </form>
     </div>

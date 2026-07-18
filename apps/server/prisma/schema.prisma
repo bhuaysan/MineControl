@@ -28,6 +28,9 @@ model User {
   passwordHash String
   role         Role       @default(VIEWER)
   createdAt    DateTime   @default(now())
+  // 2FA (TOTP) — Secret verschlüsselt; erst nach Bestätigung aktiv.
+  totpSecretEnc String?
+  totpEnabled   Boolean   @default(false)
   auditLogs    AuditLog[]
   apiTokens    ApiToken[]
 }
