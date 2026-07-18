@@ -1,0 +1,1102 @@
+<title>MineControl — UI-Mockup</title>
+<style>
+  :root {
+    --bg: #F2F5F3;
+    --surface: #FFFFFF;
+    --surface-2: #E9EEEB;
+    --border: #D5DDD8;
+    --text: #1B2420;
+    --muted: #5F6E66;
+    --accent: #0E8C77;
+    --accent-soft: #0E8C7718;
+    --online: #2E9E48;
+    --online-soft: #2E9E4818;
+    --warn: #B07E1A;
+    --warn-soft: #B07E1A1A;
+    --danger: #C2422F;
+    --danger-soft: #C2422F14;
+    --offline: #7A8880;
+    --offline-soft: #7A888022;
+    --console-bg: #1016138;
+    --shadow: 0 1px 2px rgba(15, 25, 20, .06), 0 4px 16px rgba(15, 25, 20, .05);
+    --mono: ui-monospace, "JetBrains Mono", "Cascadia Code", "SF Mono", Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0F1412;
+      --surface: #171E1B;
+      --surface-2: #1E2723;
+      --border: #2A352F;
+      --text: #E6ECE8;
+      --muted: #93A29A;
+      --accent: #4CC9B0;
+      --accent-soft: #4CC9B01A;
+      --online: #5BD975;
+      --online-soft: #5BD9751A;
+      --warn: #E5B84B;
+      --warn-soft: #E5B84B1A;
+      --danger: #E0604F;
+      --danger-soft: #E0604F1A;
+      --offline: #6B7A72;
+      --offline-soft: #6B7A7226;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 6px 20px rgba(0, 0, 0, .18);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0F1412;
+    --surface: #171E1B;
+    --surface-2: #1E2723;
+    --border: #2A352F;
+    --text: #E6ECE8;
+    --muted: #93A29A;
+    --accent: #4CC9B0;
+    --accent-soft: #4CC9B01A;
+    --online: #5BD975;
+    --online-soft: #5BD9751A;
+    --warn: #E5B84B;
+    --warn-soft: #E5B84B1A;
+    --danger: #E0604F;
+    --danger-soft: #E0604F1A;
+    --offline: #6B7A72;
+    --offline-soft: #6B7A7226;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 6px 20px rgba(0, 0, 0, .18);
+  }
+  :root[data-theme="light"] {
+    --bg: #F2F5F3;
+    --surface: #FFFFFF;
+    --surface-2: #E9EEEB;
+    --border: #D5DDD8;
+    --text: #1B2420;
+    --muted: #5F6E66;
+    --accent: #0E8C77;
+    --accent-soft: #0E8C7718;
+    --online: #2E9E48;
+    --online-soft: #2E9E4818;
+    --warn: #B07E1A;
+    --warn-soft: #B07E1A1A;
+    --danger: #C2422F;
+    --danger-soft: #C2422F14;
+    --offline: #7A8880;
+    --offline-soft: #7A888022;
+    --shadow: 0 1px 2px rgba(15, 25, 20, .06), 0 4px 16px rgba(15, 25, 20, .05);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    background: var(--bg);
+    color: var(--text);
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  :is(button, a, input):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  .app { display: flex; min-height: 100vh; }
+
+  /* ── Sidebar ─────────────────────────────── */
+  .sidebar {
+    width: 236px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 18px 12px 14px;
+    gap: 4px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 10px 16px;
+  }
+  .brand-name { font-weight: 700; font-size: 16px; letter-spacing: .01em; }
+  .brand-name em { font-style: normal; color: var(--accent); }
+  /* Pixel-Grasblock: 4×4 Grid als Logo */
+  .logo {
+    width: 26px; height: 26px;
+    display: grid;
+    grid-template: repeat(4, 1fr) / repeat(4, 1fr);
+    image-rendering: pixelated;
+    flex-shrink: 0;
+  }
+  .logo i { display: block; }
+  .logo .g1 { background: #63C74D; } .logo .g2 { background: #4FA83C; }
+  .logo .d1 { background: #7A5535; } .logo .d2 { background: #634428; }
+
+  .nav-label {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--muted);
+    padding: 12px 10px 5px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    text-align: left;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--muted);
+  }
+  .nav-item:hover { background: var(--surface-2); color: var(--text); }
+  .nav-item.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .nav-item .count {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+
+  /* Quadratischer Status-Pixel — die Signatur des Systems */
+  .px {
+    width: 8px; height: 8px;
+    flex-shrink: 0;
+    display: inline-block;
+  }
+  .px.online { background: var(--online); }
+  .px.offline { background: var(--offline); }
+  .px.error { background: var(--danger); }
+  .px.busy { background: var(--warn); animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) {
+    .px.busy { animation: none; }
+    * { transition: none !important; }
+  }
+
+  .sidebar-footer {
+    margin-top: auto;
+    border-top: 1px solid var(--border);
+    padding: 12px 10px 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .sidebar-footer .who { line-height: 1.25; }
+  .sidebar-footer .who b { font-size: 13px; display: block; }
+  .role {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--accent);
+  }
+  .theme-btn {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    width: 28px; height: 28px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1;
+  }
+  .theme-btn:hover { color: var(--text); background: var(--surface-2); }
+
+  /* ── Main ────────────────────────────────── */
+  .main { flex: 1; min-width: 0; padding: 26px 32px 48px; }
+  .page { max-width: 1180px; margin: 0 auto; }
+  .page-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  h1 { font-size: 21px; margin: 0; letter-spacing: -.01em; }
+  h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .09em;
+    color: var(--muted);
+    margin: 0 0 12px;
+    font-weight: 600;
+  }
+  .spacer { flex: 1; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 14px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .btn:hover { background: var(--surface-2); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.danger { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
+  .btn.sm { padding: 4px 10px; font-size: 12.5px; font-weight: 500; }
+  .btn.ghost { border-color: transparent; background: none; color: var(--muted); }
+  .btn.ghost:hover { background: var(--surface-2); color: var(--text); }
+
+  /* Summary-Leiste */
+  .summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 36px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+  }
+  .stat .k {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+  }
+  .stat .v {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 19px;
+    font-weight: 600;
+  }
+  .stat .v small { font-size: 12px; color: var(--muted); font-weight: 400; }
+
+  /* Server-Karten */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+  }
+  .server-card { padding: 16px 18px 14px; cursor: pointer; transition: border-color .15s; }
+  .server-card:hover { border-color: var(--accent); }
+  .server-card .top { display: flex; align-items: center; gap: 9px; }
+  .server-card .name { font-weight: 700; font-size: 15px; }
+  .tag {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: var(--surface-2);
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .badge {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 3px;
+  }
+  .badge.online { color: var(--online); background: var(--online-soft); }
+  .badge.offline { color: var(--offline); background: var(--offline-soft); }
+  .badge.busy { color: var(--warn); background: var(--warn-soft); }
+  .server-card .meta {
+    color: var(--muted);
+    font-size: 12.5px;
+    margin: 3px 0 12px;
+    font-family: var(--mono);
+  }
+  .server-card .row {
+    display: flex;
+    align-items: flex-end;
+    gap: 18px;
+  }
+  .kv .k { font-size: 11px; color: var(--muted); }
+  .kv .v {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .spark { margin-left: auto; }
+  .spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+  .spark .fill { fill: var(--accent); opacity: .12; stroke: none; }
+  .spark .dot { fill: var(--accent); }
+  .server-card .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 13px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Server-Detail ───────────────────────── */
+  .back {
+    background: none; border: 0; padding: 0;
+    color: var(--muted); font-size: 13px;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .back:hover { color: var(--accent); }
+  .detail-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 10px 0 4px; }
+  .detail-head h1 { display: flex; align-items: center; gap: 11px; }
+  .detail-head .px { width: 10px; height: 10px; }
+  .detail-meta { color: var(--muted); font-family: var(--mono); font-size: 12.5px; margin-bottom: 16px; }
+
+  .tabs {
+    display: flex;
+    gap: 2px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+    overflow-x: auto;
+  }
+  .tab {
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    padding: 9px 14px;
+    color: var(--muted);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab[disabled] { opacity: .45; cursor: not-allowed; }
+  .tab .soon {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    background: var(--surface-2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 5px;
+  }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: 16px;
+  }
+  .detail-grid .full { grid-column: 1 / -1; }
+  .card .card-head {
+    display: flex; align-items: center;
+    padding: 13px 18px 0;
+  }
+  .card .card-body { padding: 10px 18px 16px; }
+
+  .player-row {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .player-row:last-child { border-bottom: 0; }
+  .player-row .pname { font-weight: 600; }
+  .player-row .ptime {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .avatar { width: 26px; height: 26px; image-rendering: pixelated; border-radius: 3px; flex-shrink: 0; }
+
+  .menu-wrap { position: relative; }
+  .dropdown {
+    position: absolute;
+    right: 0; top: calc(100% + 4px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    box-shadow: var(--shadow);
+    min-width: 150px;
+    z-index: 30;
+    padding: 4px;
+    display: none;
+  }
+  .dropdown.open { display: block; }
+  .dropdown button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: 0;
+    padding: 7px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .dropdown button:hover { background: var(--surface-2); }
+  .dropdown button.danger { color: var(--danger); }
+  .dropdown hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+
+  .metric { display: flex; align-items: center; gap: 12px; padding: 7px 0; }
+  .metric .mk { width: 42px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .metric .mv {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 13.5px;
+  }
+  .metric .mv small { color: var(--muted); font-weight: 400; }
+
+  .event { display: flex; gap: 12px; padding: 6px 0; font-size: 13px; }
+  .event time { font-family: var(--mono); color: var(--muted); font-size: 12px; flex-shrink: 0; padding-top: 1px; }
+
+  /* ── Konsole ─────────────────────────────── */
+  .console {
+    background: #0C110F;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 480px;
+  }
+  .console-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.75;
+    color: #B9C7BF;
+  }
+  .console-log .t { color: #5E6E66; }
+  .console-log .info { color: #7FD6C2; }
+  .console-log .warn2 { color: #E5B84B; }
+  .console-log .err { color: #E0604F; }
+  .console-log .cmd { color: #E6ECE8; font-weight: 600; }
+  .console-input {
+    display: flex;
+    gap: 10px;
+    border-top: 1px solid #222C27;
+    padding: 10px 14px;
+    background: #10161355;
+  }
+  .console-input .prompt { font-family: var(--mono); color: #4CC9B0; align-self: center; }
+  .console-input input {
+    flex: 1;
+    background: none;
+    border: 0;
+    color: #E6ECE8;
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  .console-input input:focus { outline: none; }
+  .console-input input::placeholder { color: #5E6E66; }
+
+  /* ── Spieler-Tab ─────────────────────────── */
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .pill {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 99px;
+    padding: 5px 13px;
+    font-size: 12.5px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .pill .count { font-family: var(--mono); margin-left: 4px; }
+  .pill.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .ptable { padding: 4px 18px; }
+  .ptable .player-row .sub { font-size: 12px; color: var(--muted); }
+  .ptable .acts { margin-left: auto; display: flex; gap: 6px; }
+
+  /* ── Dialog & Toast ──────────────────────── */
+  dialog {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 22px 24px;
+    width: min(420px, 92vw);
+    box-shadow: 0 20px 60px rgba(0,0,0,.35);
+  }
+  dialog::backdrop { background: rgba(8, 12, 10, .55); }
+  dialog h3 { margin: 0 0 4px; font-size: 16px; }
+  dialog p { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+  dialog label { font-size: 12px; font-weight: 600; display: block; margin-bottom: 5px; }
+  dialog input[type=text] {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    margin-bottom: 16px;
+  }
+  dialog .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+  .toast-wrap {
+    position: fixed;
+    bottom: 20px; right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 100;
+  }
+  .toast {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 5px;
+    padding: 10px 16px;
+    font-size: 13px;
+    box-shadow: var(--shadow);
+    max-width: 340px;
+  }
+  .toast.danger { border-left-color: var(--danger); }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .main { padding: 18px 16px 40px; }
+    .detail-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="app">
+  <!-- ═══ Sidebar ═══ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <i class="g1"></i><i class="g2"></i><i class="g1"></i><i class="g2"></i>
+        <i class="g2"></i><i class="d1"></i><i class="d2"></i><i class="g1"></i>
+        <i class="d1"></i><i class="d2"></i><i class="d1"></i><i class="d2"></i>
+        <i class="d2"></i><i class="d1"></i><i class="d2"></i><i class="d1"></i>
+      </div>
+      <span class="brand-name">Mine<em>Control</em></span>
+    </div>
+
+    <button class="nav-item active" data-nav="dashboard" onclick="showDashboard()">
+      <svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+      Dashboard
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 2.7-4.5 6-4.5s6 1.5 6 4.5z"/></svg>
+      Spieler <span class="count">248</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="5" r="2.5"/><circle cx="11" cy="6" r="2"/><path d="M1 13.5c0-2.5 2-3.7 4.5-3.7S10 11 10 13.5z"/><path d="M10.8 13.5c0-1.8-.8-3-2-3.6.7-.3 1.4-.4 2.2-.4 2 0 4 1 4 3.9z"/></svg>
+      Benutzer <span class="count">4</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 1h10v14H3zM5 4h6v1.4H5zm0 3h6v1.4H5zm0 3h4v1.4H5z" fill-rule="evenodd"/></svg>
+      Audit-Log
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.5A2.5 2.5 0 1 0 8 5.5a2.5 2.5 0 0 0 0 5zm6-2.5 1.5.9-1 2.6-1.8-.2a5 5 0 0 1-1.3 1.3l.2 1.8-2.6 1-1-1.5h-2l-1 1.5-2.6-1 .2-1.8A5 5 0 0 1 1.3 11l-1.8.2-1-2.6L0 8" transform="translate(1)"/></svg>
+      Einstellungen
+    </button>
+
+    <div class="nav-label">Server</div>
+    <button class="nav-item" onclick="showServer()">
+      <span class="px online" id="side-px-smp"></span> SMP <span class="count">12</span>
+    </button>
+    <button class="nav-item" onclick="showServer()">
+      <span class="px online"></span> Creative <span class="count">3</span>
+    </button>
+    <button class="nav-item" onclick="showServer()">
+      <span class="px online"></span> Modpack ATM10 <span class="count">2</span>
+    </button>
+    <button class="nav-item" onclick="showServer()">
+      <span class="px offline"></span> Testserver <span class="count">–</span>
+    </button>
+
+    <div class="sidebar-footer">
+      <canvas class="avatar" width="8" height="8" data-face="ben"></canvas>
+      <div class="who"><b>ben</b><span class="role">Admin</span></div>
+      <button class="theme-btn" onclick="toggleTheme()" title="Theme wechseln" aria-label="Theme wechseln">◐</button>
+    </div>
+  </aside>
+
+  <!-- ═══ Main ═══ -->
+  <main class="main">
+
+    <!-- ── Dashboard ── -->
+    <div class="page" id="view-dashboard">
+      <div class="page-head">
+        <h1>Dashboard</h1>
+        <div class="spacer"></div>
+        <button class="btn primary" onclick="toast('Wizard „Server hinzufügen“ — im Mockup nicht enthalten')">+ Server hinzufügen</button>
+      </div>
+
+      <div class="summary">
+        <div class="stat"><div class="k">Server online</div><div class="v">3<small> / 4</small></div></div>
+        <div class="stat"><div class="k">Spieler online</div><div class="v">17</div></div>
+        <div class="stat"><div class="k">RAM belegt</div><div class="v">9,2<small> / 16 GB</small></div></div>
+        <div class="stat"><div class="k">Letztes Backup</div><div class="v">18:30<small> · OK</small></div></div>
+      </div>
+
+      <div class="grid">
+
+        <div class="card server-card" onclick="showServer()">
+          <div class="top">
+            <span class="name">SMP</span>
+            <span class="tag">Docker</span>
+            <span class="badge online"><span class="px online"></span>Online</span>
+          </div>
+          <div class="meta">Paper 1.21.6 · mc.beispiel.de:25565</div>
+          <div class="row">
+            <div class="kv"><div class="k">Spieler</div><div class="v">12 / 50</div></div>
+            <div class="kv"><div class="k">RAM</div><div class="v">4,1 GB</div></div>
+            <svg class="spark" width="110" height="34" viewBox="0 0 110 34" aria-label="Spielerzahl 24h">
+              <polygon class="fill" points="0,30 14,26 28,28 42,18 56,22 70,10 84,14 98,6 110,9 110,34 0,34"/>
+              <polyline points="0,30 14,26 28,28 42,18 56,22 70,10 84,14 98,6 110,9"/>
+              <circle class="dot" cx="110" cy="9" r="2.4"/>
+            </svg>
+          </div>
+          <div class="actions" onclick="event.stopPropagation()">
+            <button class="btn sm" onclick="showServer('konsole')">Konsole</button>
+            <button class="btn sm ghost" onclick="askStop()">⏻ Stoppen</button>
+          </div>
+        </div>
+
+        <div class="card server-card" onclick="showServer()">
+          <div class="top">
+            <span class="name">Creative</span>
+            <span class="tag">Docker</span>
+            <span class="badge online"><span class="px online"></span>Online</span>
+          </div>
+          <div class="meta">Paper 1.21.6 · mc.beispiel.de:25566</div>
+          <div class="row">
+            <div class="kv"><div class="k">Spieler</div><div class="v">3 / 20</div></div>
+            <div class="kv"><div class="k">RAM</div><div class="v">2,0 GB</div></div>
+            <svg class="spark" width="110" height="34" viewBox="0 0 110 34">
+              <polygon class="fill" points="0,28 14,29 28,26 42,28 56,27 70,24 84,26 98,25 110,24 110,34 0,34"/>
+              <polyline points="0,28 14,29 28,26 42,28 56,27 70,24 84,26 98,25 110,24"/>
+              <circle class="dot" cx="110" cy="24" r="2.4"/>
+            </svg>
+          </div>
+          <div class="actions" onclick="event.stopPropagation()">
+            <button class="btn sm" onclick="showServer('konsole')">Konsole</button>
+            <button class="btn sm ghost" onclick="toast('Creative wird gestoppt …')">⏻ Stoppen</button>
+          </div>
+        </div>
+
+        <div class="card server-card" onclick="showServer()">
+          <div class="top">
+            <span class="name">Modpack ATM10</span>
+            <span class="tag">Docker</span>
+            <span class="badge online"><span class="px online"></span>Online</span>
+          </div>
+          <div class="meta">NeoForge 1.21 · mc.beispiel.de:25570</div>
+          <div class="row">
+            <div class="kv"><div class="k">Spieler</div><div class="v">2 / 10</div></div>
+            <div class="kv"><div class="k">RAM</div><div class="v">3,1 GB</div></div>
+            <svg class="spark" width="110" height="34" viewBox="0 0 110 34">
+              <polygon class="fill" points="0,31 14,30 28,31 42,25 56,26 70,28 84,22 98,26 110,25 110,34 0,34"/>
+              <polyline points="0,31 14,30 28,31 42,25 56,26 70,28 84,22 98,26 110,25"/>
+              <circle class="dot" cx="110" cy="25" r="2.4"/>
+            </svg>
+          </div>
+          <div class="actions" onclick="event.stopPropagation()">
+            <button class="btn sm" onclick="showServer('konsole')">Konsole</button>
+            <button class="btn sm ghost" onclick="toast('Modpack ATM10 wird gestoppt …')">⏻ Stoppen</button>
+          </div>
+        </div>
+
+        <div class="card server-card" onclick="showServer()">
+          <div class="top">
+            <span class="name">Testserver</span>
+            <span class="tag">Extern</span>
+            <span class="badge offline"><span class="px offline"></span>Offline</span>
+          </div>
+          <div class="meta">play.freund-vm.net:25565 · zuletzt online: gestern 23:10</div>
+          <div class="row">
+            <div class="kv"><div class="k">Spieler</div><div class="v">–</div></div>
+            <div class="kv"><div class="k">RAM</div><div class="v">–</div></div>
+          </div>
+          <div class="actions" onclick="event.stopPropagation()">
+            <button class="btn sm" onclick="toast('Ping fehlgeschlagen — Host nicht erreichbar', true)">Verbindung testen</button>
+            <button class="btn sm ghost" disabled title="Externe Server können nicht ferngestartet werden" style="opacity:.5; cursor:not-allowed">▶ Start n. verfügbar</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── Server-Detail ── -->
+    <div class="page hidden" id="view-server">
+      <button class="back" onclick="showDashboard()">← Dashboard</button>
+      <div class="detail-head">
+        <h1><span class="px online" id="detail-px"></span> SMP</h1>
+        <span class="tag">Docker</span>
+        <span class="badge online" id="detail-badge"><span class="px online"></span>Online</span>
+        <div class="spacer"></div>
+        <button class="btn" id="btn-restart" onclick="toast('SMP wird neu gestartet …')">⟳ Neustart</button>
+        <button class="btn danger" id="btn-stop" onclick="askStop()">⏻ Stoppen</button>
+        <button class="btn primary hidden" id="btn-start" onclick="doStart()">▶ Starten</button>
+      </div>
+      <div class="detail-meta">Paper 1.21.6 · mc.beispiel.de:25565 · Container <span title="Container-ID">a8f3c21b</span> · Uptime 2 T 6 h</div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="uebersicht" onclick="showTab('uebersicht')">Übersicht</button>
+        <button class="tab" data-tab="konsole" onclick="showTab('konsole')">Konsole</button>
+        <button class="tab" data-tab="spieler" onclick="showTab('spieler')">Spieler</button>
+        <button class="tab" disabled title="Kommt in Phase 3">Backups <span class="soon">Phase 3</span></button>
+        <button class="tab" disabled title="Kommt in Phase 3">Zeitpläne <span class="soon">Phase 3</span></button>
+        <button class="tab" disabled title="Kommt in Phase 2">Einstellungen <span class="soon">Phase 2</span></button>
+      </div>
+
+      <!-- Tab: Übersicht -->
+      <div id="tab-uebersicht">
+        <div class="detail-grid">
+          <div class="card">
+            <div class="card-head"><h2>Spieler online · 12</h2></div>
+            <div class="card-body" id="online-list"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Metriken</h2></div>
+            <div class="card-body">
+              <div class="metric">
+                <span class="mk">CPU</span>
+                <svg class="spark" width="130" height="26" viewBox="0 0 130 26"><polyline points="0,18 16,15 32,19 48,12 64,16 80,10 96,14 112,11 130,13"/><circle class="dot" cx="130" cy="13" r="2.2"/></svg>
+                <span class="mv">34 <small>%</small></span>
+              </div>
+              <div class="metric">
+                <span class="mk">RAM</span>
+                <svg class="spark" width="130" height="26" viewBox="0 0 130 26"><polyline points="0,16 16,15 32,14 48,13 64,13 80,12 96,12 112,11 130,11"/><circle class="dot" cx="130" cy="11" r="2.2"/></svg>
+                <span class="mv">4,1 <small>/ 6 GB</small></span>
+              </div>
+              <div class="metric">
+                <span class="mk">TPS</span>
+                <svg class="spark" width="130" height="26" viewBox="0 0 130 26"><polyline points="0,8 16,8 32,9 48,8 64,11 80,8 96,8 112,9 130,8"/><circle class="dot" cx="130" cy="8" r="2.2"/></svg>
+                <span class="mv">19,8</span>
+              </div>
+              <div class="metric">
+                <span class="mk">Disk</span>
+                <svg class="spark" width="130" height="26" viewBox="0 0 130 26"><polyline points="0,20 16,19 32,19 48,18 64,18 80,17 96,17 112,16 130,16"/><circle class="dot" cx="130" cy="16" r="2.2"/></svg>
+                <span class="mv">18,4 <small>GB</small></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card full">
+            <div class="card-head"><h2>Letzte Ereignisse</h2></div>
+            <div class="card-body">
+              <div class="event"><time>18:42</time><span><b>Steve</b> ist dem Server beigetreten</span></div>
+              <div class="event"><time>18:30</time><span>Backup abgeschlossen — 2,1 GB, 34 s</span></div>
+              <div class="event"><time>18:12</time><span><b>mod_lena</b> hat <b>Herobrine</b> gebannt · Grund: „Griefing am Spawn“</span></div>
+              <div class="event"><time>17:55</time><span>Server neu gestartet (geplanter Task „Täglicher Restart“)</span></div>
+              <div class="event"><time>16:03</time><span><b>Alex</b> zur Whitelist hinzugefügt (durch <b>ben</b>)</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Konsole -->
+      <div id="tab-konsole" class="hidden">
+        <div class="console">
+          <div class="console-log" id="console-log"></div>
+          <div class="console-input">
+            <span class="prompt">›</span>
+            <input id="console-cmd" type="text" placeholder="Befehl eingeben, z. B. /say Hallo  (↑ für Historie)" autocomplete="off">
+            <button class="btn sm" onclick="sendCmd()">Senden</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Spieler -->
+      <div id="tab-spieler" class="hidden">
+        <div class="pills">
+          <button class="pill active" data-pill="online" onclick="showPill('online')">Online <span class="count">12</span></button>
+          <button class="pill" data-pill="whitelist" onclick="showPill('whitelist')">Whitelist <span class="count">34</span></button>
+          <button class="pill" data-pill="bans" onclick="showPill('bans')">Bans <span class="count">5</span></button>
+          <button class="pill" data-pill="ops" onclick="showPill('ops')">OPs <span class="count">3</span></button>
+        </div>
+        <div class="card ptable" id="pill-content"></div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- Ban-Dialog -->
+<dialog id="dlg-ban">
+  <h3>Spieler bannen</h3>
+  <p><b id="ban-name">Spieler</b> wird vom Server <b>SMP</b> ausgeschlossen. Der Vorgang wird im Audit-Log festgehalten.</p>
+  <form method="dialog" onsubmit="return confirmBan(event)">
+    <label for="ban-reason">Grund (Pflichtfeld)</label>
+    <input id="ban-reason" type="text" placeholder="z. B. Griefing am Spawn" required>
+    <div class="dlg-actions">
+      <button type="button" class="btn" onclick="document.getElementById('dlg-ban').close()">Abbrechen</button>
+      <button type="submit" class="btn danger">Bannen</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Stop-Bestätigung -->
+<dialog id="dlg-stop">
+  <h3>SMP stoppen?</h3>
+  <p>12 Spieler sind gerade online. Der Server speichert die Welt und fährt dann herunter.</p>
+  <div class="dlg-actions">
+    <button class="btn" onclick="document.getElementById('dlg-stop').close()">Abbrechen</button>
+    <button class="btn danger" onclick="doStop()">Jetzt stoppen</button>
+  </div>
+</dialog>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+  /* ── Theme-Toggle ── */
+  function toggleTheme() {
+    const root = document.documentElement;
+    const dark = root.dataset.theme === 'dark' ||
+      (!root.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+    root.dataset.theme = dark ? 'light' : 'dark';
+  }
+
+  /* ── Pixel-Avatare (deterministisch pro Name) ── */
+  const skins = [['#8A5A32','#3E2A18','#4A6ED1'], ['#C58A55','#1E1E1E','#3E9E4E'], ['#7A4A28','#5A3A1A','#C24242'], ['#B57945','#2E2418','#8A4AC2'], ['#96613A','#4E381E','#D1A03E']];
+  function drawFace(cv, name) {
+    let h = 0;
+    for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    const [skin, hair, eye] = skins[h % skins.length];
+    const x = cv.getContext('2d');
+    x.fillStyle = skin; x.fillRect(0, 0, 8, 8);
+    x.fillStyle = hair; x.fillRect(0, 0, 8, 2); x.fillRect(0, 2, 1, 1); x.fillRect(7, 2, 1, 1);
+    x.fillStyle = '#fff'; x.fillRect(1, 4, 2, 1); x.fillRect(5, 4, 2, 1);
+    x.fillStyle = eye; x.fillRect(2, 4, 1, 1); x.fillRect(5, 4, 1, 1);
+    x.fillStyle = 'rgba(0,0,0,.35)'; x.fillRect(3, 6, 2, 1);
+  }
+  function faceHTML(name) {
+    return `<canvas class="avatar" width="8" height="8" data-face="${name}"></canvas>`;
+  }
+  function paintFaces(root) {
+    (root || document).querySelectorAll('canvas[data-face]').forEach(c => drawFace(c, c.dataset.face));
+  }
+
+  /* ── Navigation ── */
+  function setNav(id) {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    const el = document.querySelector(`[data-nav="${id}"]`);
+    if (el) el.classList.add('active');
+  }
+  function showDashboard() {
+    document.getElementById('view-dashboard').classList.remove('hidden');
+    document.getElementById('view-server').classList.add('hidden');
+    setNav('dashboard');
+  }
+  function showServer(tab) {
+    document.getElementById('view-dashboard').classList.add('hidden');
+    document.getElementById('view-server').classList.remove('hidden');
+    setNav(null);
+    showTab(tab || 'uebersicht');
+  }
+  function showTab(id) {
+    ['uebersicht', 'konsole', 'spieler'].forEach(t => {
+      document.getElementById('tab-' + t).classList.toggle('hidden', t !== id);
+      const btn = document.querySelector(`.tab[data-tab="${t}"]`);
+      if (btn) btn.classList.toggle('active', t === id);
+    });
+    if (id === 'konsole') scrollLog();
+  }
+
+  /* ── Online-Spielerliste (Übersicht) ── */
+  const online = [
+    ['Steve', '2 h 14 m'], ['Alex', '0 h 47 m'], ['Notch_Fan99', '5 h 02 m'],
+    ['Lianera', '1 h 33 m'], ['xX_Creeper_Xx', '0 h 12 m'], ['Baumhaus_Bodo', '3 h 51 m'],
+    ['mod_lena', '4 h 20 m'], ['PixelPia', '0 h 58 m'],
+  ];
+  function renderOnline() {
+    const el = document.getElementById('online-list');
+    el.innerHTML = online.map(([n, t], i) => `
+      <div class="player-row">
+        ${faceHTML(n)}
+        <span class="pname">${n}</span>
+        <span class="ptime">${t}</span>
+        <span class="menu-wrap">
+          <button class="btn sm ghost" onclick="toggleMenu(event, ${i})" aria-label="Aktionen für ${n}">⋮</button>
+          <span class="dropdown" id="menu-${i}">
+            <button onclick="toast('${n} wurde gekickt'); closeMenus()">Kicken</button>
+            <button class="danger" onclick="openBan('${n}')">Bannen …</button>
+            <hr>
+            <button onclick="toast('${n} ist jetzt OP'); closeMenus()">Zu OP machen</button>
+            <button onclick="toast('Spieler-Profil — im Mockup nicht enthalten'); closeMenus()">Profil öffnen</button>
+          </span>
+        </span>
+      </div>`).join('') +
+      `<div style="padding-top:10px"><button class="btn sm ghost" onclick="showTab('spieler')">Alle 12 anzeigen →</button></div>`;
+    paintFaces(el);
+  }
+  function toggleMenu(ev, i) {
+    ev.stopPropagation();
+    const m = document.getElementById('menu-' + i);
+    const wasOpen = m.classList.contains('open');
+    closeMenus();
+    if (!wasOpen) m.classList.add('open');
+  }
+  function closeMenus() {
+    document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
+  }
+  document.addEventListener('click', closeMenus);
+
+  /* ── Ban-Dialog ── */
+  function openBan(name) {
+    closeMenus();
+    document.getElementById('ban-name').textContent = name;
+    document.getElementById('ban-reason').value = '';
+    document.getElementById('dlg-ban').showModal();
+  }
+  function confirmBan(ev) {
+    ev.preventDefault();
+    const reason = document.getElementById('ban-reason').value.trim();
+    if (!reason) return false;
+    document.getElementById('dlg-ban').close();
+    toast(`${document.getElementById('ban-name').textContent} gebannt · Grund: „${reason}“`, true);
+    return false;
+  }
+
+  /* ── Stop / Start-Flow ── */
+  function askStop() { document.getElementById('dlg-stop').showModal(); }
+  function setState(cls, label) {
+    const badge = document.getElementById('detail-badge');
+    badge.className = 'badge ' + cls;
+    badge.innerHTML = `<span class="px ${cls}"></span>${label}`;
+    document.getElementById('detail-px').className = 'px ' + cls;
+    document.getElementById('side-px-smp').className = 'px ' + cls;
+  }
+  function doStop() {
+    document.getElementById('dlg-stop').close();
+    showServer();
+    setState('busy', 'Stoppt …');
+    toast('SMP: Welt wird gespeichert, Server fährt herunter …');
+    setTimeout(() => {
+      setState('offline', 'Offline');
+      document.getElementById('btn-stop').classList.add('hidden');
+      document.getElementById('btn-restart').classList.add('hidden');
+      document.getElementById('btn-start').classList.remove('hidden');
+      toast('SMP ist jetzt offline');
+    }, 2600);
+  }
+  function doStart() {
+    setState('busy', 'Startet …');
+    toast('SMP: Container wird gestartet …');
+    setTimeout(() => {
+      setState('online', 'Online');
+      document.getElementById('btn-stop').classList.remove('hidden');
+      document.getElementById('btn-restart').classList.remove('hidden');
+      document.getElementById('btn-start').classList.add('hidden');
+      toast('SMP ist wieder online');
+    }, 2600);
+  }
+
+  /* ── Konsole ── */
+  const logEl = document.getElementById('console-log');
+  const bootLines = [
+    ['17:55:02', 'info', 'Starting minecraft server version 1.21.6'],
+    ['17:55:04', 'info', 'Loading properties'],
+    ['17:55:09', 'info', 'Preparing level "world"'],
+    ['17:55:21', 'info', 'Done (12.480s)! For help, type "help"'],
+    ['17:55:21', 'info', 'RCON running on 0.0.0.0:25575'],
+    ['18:02:11', 'info', 'Steve joined the game'],
+    ['18:12:40', 'warn2', "Can't keep up! Is the server overloaded? Running 2043ms behind"],
+    ['18:12:44', 'info', 'mod_lena issued server command: /ban Herobrine Griefing am Spawn'],
+    ['18:30:00', 'info', '[Backup] Snapshot erstellt: world-2026-07-18-1830.tar.gz (2,1 GB)'],
+    ['18:42:37', 'info', 'Steve joined the game'],
+  ];
+  function addLine(t, cls, msg) {
+    const div = document.createElement('div');
+    div.innerHTML = `<span class="t">${t}</span> <span class="${cls}">[${cls === 'warn2' ? 'WARN' : cls === 'err' ? 'ERROR' : 'INFO'}]</span> ${msg}`;
+    logEl.appendChild(div);
+    scrollLog();
+  }
+  function scrollLog() { logEl.scrollTop = logEl.scrollHeight; }
+  bootLines.forEach(l => addLine(...l));
+
+  const history = [];
+  let histIdx = -1;
+  const cmdInput = document.getElementById('console-cmd');
+  function now() {
+    return new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  function sendCmd() {
+    const v = cmdInput.value.trim();
+    if (!v) return;
+    history.push(v); histIdx = history.length;
+    addLine(now(), 'cmd', '&gt; ' + v.replace(/</g, '&lt;'));
+    setTimeout(() => {
+      if (v.startsWith('/list') || v === 'list') addLine(now(), 'info', 'There are 12 of a max of 50 players online');
+      else if (v.startsWith('/say')) addLine(now(), 'info', `[Server] ${v.replace(/^\/say\s*/, '')}`);
+      else addLine(now(), 'info', 'Befehl über RCON gesendet (Mockup-Antwort)');
+    }, 350);
+    cmdInput.value = '';
+  }
+  cmdInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendCmd();
+    if (e.key === 'ArrowUp' && histIdx > 0) { histIdx--; cmdInput.value = history[histIdx]; }
+    if (e.key === 'ArrowDown') {
+      histIdx = Math.min(histIdx + 1, history.length);
+      cmdInput.value = history[histIdx] || '';
+    }
+  });
+
+  /* ── Spieler-Tab ── */
+  const pillData = {
+    online: online.map(([n, t]) => ({ n, sub: `online · ${t}`, acts: [['Kicken', `toast('${n} wurde gekickt')`], ['Bannen', `openBan('${n}')`, 'danger']] })),
+    whitelist: [
+      { n: 'Steve', sub: 'seit 03.01.2026', acts: [['Entfernen', `toast('Steve von der Whitelist entfernt')`]] },
+      { n: 'Alex', sub: 'seit 16.07.2026 · hinzugefügt von ben', acts: [['Entfernen', `toast('Alex von der Whitelist entfernt')`]] },
+      { n: 'Lianera', sub: 'seit 22.02.2026', acts: [['Entfernen', `toast('Lianera von der Whitelist entfernt')`]] },
+      { n: 'PixelPia', sub: 'seit 04.05.2026', acts: [['Entfernen', `toast('PixelPia von der Whitelist entfernt')`]] },
+    ],
+    bans: [
+      { n: 'Herobrine', sub: 'gebannt 18.07.2026 von mod_lena · „Griefing am Spawn“', acts: [['Entbannen', `toast('Herobrine wurde entbannt')`]] },
+      { n: 'DupeKing', sub: 'gebannt 02.06.2026 von ben · „Item-Duping“', acts: [['Entbannen', `toast('DupeKing wurde entbannt')`]] },
+      { n: 'LagMachine', sub: 'gebannt 11.04.2026 von ben · „Redstone-Lagmaschinen trotz Verwarnung“', acts: [['Entbannen', `toast('LagMachine wurde entbannt')`]] },
+    ],
+    ops: [
+      { n: 'ben', sub: 'OP-Level 4', acts: [['De-OP', `toast('ben ist kein OP mehr')`]] },
+      { n: 'mod_lena', sub: 'OP-Level 2', acts: [['De-OP', `toast('mod_lena ist kein OP mehr')`]] },
+      { n: 'Baumhaus_Bodo', sub: 'OP-Level 2', acts: [['De-OP', `toast('Baumhaus_Bodo ist kein OP mehr')`]] },
+    ],
+  };
+  function showPill(id) {
+    document.querySelectorAll('.pill').forEach(p => p.classList.toggle('active', p.dataset.pill === id));
+    const el = document.getElementById('pill-content');
+    el.innerHTML = pillData[id].map(r => `
+      <div class="player-row">
+        ${faceHTML(r.n)}
+        <span><span class="pname">${r.n}</span><br><span class="sub">${r.sub}</span></span>
+        <span class="acts">${r.acts.map(([label, fn, cls]) =>
+          `<button class="btn sm ${cls === 'danger' ? 'danger' : ''}" onclick="${fn}">${label}</button>`).join('')}
+        </span>
+      </div>`).join('');
+    paintFaces(el);
+  }
+
+  /* ── Toasts ── */
+  function toast(msg, danger) {
+    const t = document.createElement('div');
+    t.className = 'toast' + (danger ? ' danger' : '');
+    t.textContent = msg;
+    document.getElementById('toasts').appendChild(t);
+    setTimeout(() => t.remove(), 4200);
+  }
+
+  renderOnline();
+  showPill('online');
+  paintFaces();
+</script>

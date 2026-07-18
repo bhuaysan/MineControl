@@ -1,0 +1,25 @@
+# Abhängigkeiten
+node_modules/
+
+# Build-Ausgaben
+dist/
+build/
+*.tsbuildinfo
+
+# Umgebungsvariablen & Secrets
+.env
+.env.*
+!.env.example
+
+# Datenbank (SQLite, lokal)
+*.db
+*.db-journal
+
+# Logs & Betriebsdaten
+logs/
+*.log
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
