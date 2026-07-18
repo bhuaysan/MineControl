@@ -1,8 +1,10 @@
 import type {
   AuditEntryDto,
   ConnectionTestResult,
+  CreateDockerServerRequest,
   CreateExternalServerRequest,
   CreateUserRequest,
+  LifecycleAction,
   LoginRequest,
   MeResponse,
   OnlinePlayer,
@@ -10,6 +12,7 @@ import type {
   PlayerActionResponse,
   SendCommandResponse,
   ServerDto,
+  ServerPropertiesDto,
   UpdateUserRequest,
   UserDto,
 } from "@minecontrol/shared";
@@ -58,6 +61,23 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  createDockerServer: (body: CreateDockerServerRequest) =>
+    request<ServerDto>("/api/servers/docker", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  lifecycleAction: (id: string, action: LifecycleAction) =>
+    request<{ ok: true }>(`/api/servers/${id}/lifecycle`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    }),
+  getProperties: (id: string) =>
+    request<ServerPropertiesDto>(`/api/servers/${id}/properties`),
+  updateProperties: (id: string, properties: Record<string, string>) =>
+    request<ServerPropertiesDto>(`/api/servers/${id}/properties`, {
+      method: "PUT",
+      body: JSON.stringify({ properties }),
+    }),
   testConnection: (body: {
     host: string;
     port: number;
@@ -68,8 +88,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  deleteServer: (id: string) =>
-    request<{ ok: true }>(`/api/servers/${id}`, { method: "DELETE" }),
+  deleteServer: (id: string, keepWorld = false) =>
+    request<{ ok: true }>(
+      `/api/servers/${id}${keepWorld ? "?keepWorld=true" : ""}`,
+      { method: "DELETE" },
+    ),
   sendCommand: (id: string, command: string) =>
     request<SendCommandResponse>(`/api/servers/${id}/command`, {
       method: "POST",

@@ -144,14 +144,14 @@ ScheduledTask id, serverId, cron, action (RESTART|COMMAND|BACKUP), payload
 - [x] Spieler-Aktionen per Klick: Kick, Ban/Unban, Whitelist add/remove, OP/De-OP
 - [x] Audit-Log: wer hat wann was gemacht
 
-### Phase 2 — Docker: eigene Server erstellen
-- [ ] Server-Erstellen-Wizard: Edition (Paper/Vanilla/Forge/Fabric), MC-Version, RAM,
+### Phase 2 — Docker: eigene Server erstellen ✅ abgeschlossen
+- [x] Server-Erstellen-Wizard: Edition (Paper/Vanilla/Forge/Fabric), MC-Version, RAM,
       Port, EULA, Welt-Seed → erstellt Container mit `itzg/minecraft-server`
-- [ ] Start / Stop / Restart / Kill mit Statusanzeige
-- [ ] Live-Konsole (xterm.js): Logstream + Eingabe direkt in stdin/RCON
-- [ ] CPU-/RAM-Anzeige pro Server (Docker stats)
-- [ ] `server.properties`-Editor mit Formular (nicht nur Rohtext)
-- [ ] Server löschen (mit Sicherheitsabfrage, Welt optional behalten)
+- [x] Start / Stop / Restart / Kill mit Statusanzeige
+- [x] Live-Konsole (xterm.js): Logstream (WS-Abo) + Eingabe via RCON
+- [x] CPU-/RAM-Anzeige pro Server (Docker stats, WS-Abo)
+- [x] `server.properties`-Editor mit Formular (nicht nur Rohtext)
+- [x] Server löschen (mit Sicherheitsabfrage, Welt optional behalten)
 
 ### Phase 3 — Betrieb & Komfort
 - [ ] Backups: manuell + Zeitplan (Cron), Retention, Restore per Klick

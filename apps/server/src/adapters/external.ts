@@ -48,6 +48,11 @@ export interface ExternalAdapterConfig {
 export class ExternalAdapter implements ServerAdapter {
   constructor(private readonly cfg: ExternalAdapterConfig) {}
 
+  /** Konfigurierte Edition — für Status-Antworten im Offline-Fall. */
+  get editionValue(): ServerEdition {
+    return this.cfg.edition;
+  }
+
   capabilities(): Capability[] {
     const caps: Capability[] = ["STATUS", "PLAYER_LIST"];
     if (this.cfg.rcon) {

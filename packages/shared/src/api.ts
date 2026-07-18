@@ -61,6 +61,73 @@ export interface CreateExternalServerRequest {
   rconPassword?: string;
 }
 
+/** Editionen, die im Docker-Wizard erstellt werden können (via itzg-Image). */
+export const DOCKER_EDITIONS = [
+  "VANILLA",
+  "PAPER",
+  "SPIGOT",
+  "FORGE",
+  "FABRIC",
+  "NEOFORGE",
+] as const;
+export type DockerEdition = (typeof DOCKER_EDITIONS)[number];
+
+/** Spielmodi (server.properties `gamemode`). */
+export const GAMEMODES = ["survival", "creative", "adventure", "spectator"] as const;
+export type Gamemode = (typeof GAMEMODES)[number];
+
+/** Schwierigkeitsgrade (server.properties `difficulty`). */
+export const DIFFICULTIES = ["peaceful", "easy", "normal", "hard"] as const;
+export type Difficulty = (typeof DIFFICULTIES)[number];
+
+/**
+ * Anlage eines Docker-Servers (Phase 2). Erzeugt einen `itzg/minecraft-server`-
+ * Container. `version` ist eine MC-Version wie „1.21.1" oder „LATEST".
+ */
+export interface CreateDockerServerRequest {
+  name: string;
+  edition: DockerEdition;
+  version: string;
+  memoryMb: number;
+  port: number;
+  seed?: string;
+  difficulty?: Difficulty;
+  gamemode?: Gamemode;
+  motd?: string;
+  onlineMode?: boolean;
+  eula: true;
+}
+
+/** Lifecycle-Aktion auf einem Server (nur Docker kann alle). */
+export const LIFECYCLE_ACTIONS = ["start", "stop", "restart", "kill"] as const;
+export type LifecycleAction = (typeof LIFECYCLE_ACTIONS)[number];
+
+/** server.properties als Schlüssel/Wert-Paare (nur Docker). */
+export type ServerPropertiesDto = Record<string, string>;
+
+/** Teilmenge der zu speichernden server.properties-Schlüssel. */
+export interface UpdateServerPropertiesRequest {
+  properties: Record<string, string>;
+}
+
+/** Fürs Formular kuratierte, editierbare server.properties-Schlüssel. */
+export const EDITABLE_PROPERTIES = [
+  "motd",
+  "difficulty",
+  "gamemode",
+  "max-players",
+  "pvp",
+  "online-mode",
+  "view-distance",
+  "simulation-distance",
+  "spawn-protection",
+  "allow-nether",
+  "allow-flight",
+  "white-list",
+  "enforce-whitelist",
+  "hardcore",
+] as const;
+
 /** Ergebnis eines Verbindungstests im Wizard. */
 export interface ConnectionTestResult {
   ping: { ok: boolean; latencyMs?: number; error?: string };

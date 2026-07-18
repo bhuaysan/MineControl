@@ -3,12 +3,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
+import { ConsoleView } from "../components/ConsoleView.js";
 import { PlayerActionMenu } from "../components/PlayerActions.js";
 import { PlayerAvatar } from "../components/PlayerAvatar.js";
+import { ServerActions } from "../components/ServerActions.js";
+import { ServerPropertiesForm } from "../components/ServerPropertiesForm.js";
 import { StatusBadge } from "../components/StatusBadge.js";
+import { useServerMetrics } from "../hooks/useServerMetrics.js";
 import { serversQueryKey } from "../hooks/useServers.js";
 import { api } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
+
+type Tab = "overview" | "console" | "players" | "settings";
 
 export function ServerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,6 +30,13 @@ export function ServerDetailPage() {
   });
 
   const canRcon = server?.capabilities.includes("RCON") ?? false;
+  const hasConsole =
+    (server?.capabilities.includes("CONSOLE") ?? false) && can("MODERATOR");
+  const hasMetrics = server?.capabilities.includes("METRICS") ?? false;
+  const hasLifecycle =
+    (server?.capabilities.includes("LIFECYCLE_START") ?? false) ||
+    (server?.capabilities.includes("LIFECYCLE_STOP") ?? false);
+  const hasSettings = server?.type === "DOCKER" && can("MODERATOR");
 
   const playersQuery = useQuery({
     queryKey: ["server", id, "players"],
@@ -32,9 +45,13 @@ export function ServerDetailPage() {
     refetchInterval: 10_000,
   });
 
-  const [tab, setTab] = useState<"overview" | "players">("overview");
+  const [tab, setTab] = useState<Tab>("overview");
   const [command, setCommand] = useState("");
   const [output, setOutput] = useState<string[]>([]);
+
+  const running =
+    server?.status.state === "ONLINE" || server?.status.state === "STARTING";
+  const metrics = useServerMetrics(id ?? "", Boolean(id) && hasMetrics && tab === "overview" && running);
 
   const commandMutation = useMutation({
     mutationFn: (cmd: string) => api.sendCommand(id!, cmd),
@@ -48,7 +65,7 @@ export function ServerDetailPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => api.deleteServer(id!),
+    mutationFn: (keepWorld: boolean) => api.deleteServer(id!, keepWorld),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: serversQueryKey });
       navigate("/");
@@ -61,15 +78,25 @@ export function ServerDetailPage() {
   };
 
   const onDelete = () => {
-    if (confirm(`Server „${server?.name}" wirklich entfernen?`)) {
-      deleteMutation.mutate();
+    if (!confirm(`Server „${server?.name}" wirklich entfernen?`)) return;
+    let keepWorld = false;
+    if (server?.type === "DOCKER") {
+      keepWorld = confirm(
+        "Weltdaten behalten?\n\nOK = Volume behalten · Abbrechen = endgültig löschen",
+      );
     }
+    deleteMutation.mutate(keepWorld);
   };
 
   if (isLoading) return <p className="text-neutral-500">Lade Server…</p>;
   if (!server) return <p className="text-status-error">Server nicht gefunden.</p>;
 
   const players = playersQuery.data ?? [];
+
+  const tabs: [Tab, string][] = [["overview", "Übersicht"]];
+  if (hasConsole) tabs.push(["console", "Konsole"]);
+  tabs.push(["players", `Spieler (${server.status.players.online})`]);
+  if (hasSettings) tabs.push(["settings", "Einstellungen"]);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -84,23 +111,21 @@ export function ServerDetailPage() {
             {server.type === "DOCKER" ? "Docker" : "Extern"} · {server.host}:{server.port}
           </p>
         </div>
-        {can("ADMIN") && (
-          <button
-            onClick={onDelete}
-            className="rounded-md border border-status-error/40 px-3 py-1.5 text-sm text-status-error hover:bg-status-error/10"
-          >
-            Entfernen
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {hasLifecycle && can("MODERATOR") && <ServerActions server={server} />}
+          {can("ADMIN") && (
+            <button
+              onClick={onDelete}
+              className="rounded-md border border-status-error/40 px-3 py-1.5 text-sm text-status-error hover:bg-status-error/10"
+            >
+              Entfernen
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mb-4 flex gap-1 border-b border-neutral-800">
-        {(
-          [
-            ["overview", "Übersicht"],
-            ["players", `Spieler (${server.status.players.online})`],
-          ] as const
-        ).map(([key, label]) => (
+        {tabs.map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -148,7 +173,35 @@ export function ServerDetailPage() {
             </dl>
           </section>
 
-          {can("MODERATOR") && canRcon && (
+          {hasMetrics && (
+            <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+              <h2 className="mb-3 font-semibold">Metriken</h2>
+              {!running ? (
+                <p className="text-sm text-neutral-500">Server offline – keine Metriken.</p>
+              ) : !metrics ? (
+                <p className="text-sm text-neutral-500">Warte auf Daten…</p>
+              ) : (
+                <div className="space-y-3">
+                  <Metric
+                    label="CPU"
+                    value={`${metrics.cpuPercent?.toFixed(1) ?? "–"} %`}
+                    percent={Math.min(metrics.cpuPercent ?? 0, 100)}
+                  />
+                  <Metric
+                    label="RAM"
+                    value={`${metrics.ramUsedMb ?? "–"} / ${metrics.ramMaxMb ?? "–"} MB`}
+                    percent={
+                      metrics.ramMaxMb
+                        ? Math.min(((metrics.ramUsedMb ?? 0) / metrics.ramMaxMb) * 100, 100)
+                        : 0
+                    }
+                  />
+                </div>
+              )}
+            </section>
+          )}
+
+          {can("MODERATOR") && canRcon && !hasConsole && (
             <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
               <h2 className="mb-3 font-semibold">Befehl senden (RCON)</h2>
               {output.length > 0 && (
@@ -175,6 +228,17 @@ export function ServerDetailPage() {
             </section>
           )}
         </div>
+      )}
+
+      {tab === "console" && hasConsole && (
+        <ConsoleView serverId={server.id} canInput={can("MODERATOR") && canRcon} />
+      )}
+
+      {tab === "settings" && hasSettings && (
+        <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+          <h2 className="mb-3 font-semibold">server.properties</h2>
+          <ServerPropertiesForm serverId={server.id} canEdit={can("ADMIN")} />
+        </section>
       )}
 
       {tab === "players" && (
@@ -214,6 +278,32 @@ export function ServerDetailPage() {
           )}
         </section>
       )}
+    </div>
+  );
+}
+
+/** Beschriftete Fortschrittsleiste für eine Metrik. */
+function Metric({
+  label,
+  value,
+  percent,
+}: {
+  label: string;
+  value: string;
+  percent: number;
+}) {
+  return (
+    <div>
+      <div className="mb-1 flex justify-between text-sm">
+        <span className="text-neutral-400">{label}</span>
+        <span className="font-mono text-neutral-200">{value}</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-neutral-800">
+        <div
+          className="h-full rounded-full bg-status-online transition-all"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
     </div>
   );
 }
