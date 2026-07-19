@@ -65,7 +65,7 @@ interface ServerAdapter {
   getStatus(): Promise<ServerStatus>;      // online, Spieler, Version, MOTD
   sendCommand(cmd: string): Promise<string>; // via RCON
   getPlayers(): Promise<Player[]>;
-  streamLogs(): AsyncIterable<LogLine>;    // Docker: logs · Extern: optional (SFTP-tail o. Agent)
+  streamLogs(): AsyncIterable<LogLine>;    // Docker: logs · Extern: nicht verfügbar
 
   capabilities(): Capability[];            // UI blendet Nicht-Verfügbares aus
 }
@@ -76,12 +76,15 @@ interface ServerAdapter {
 | Status, Spielerliste (Query/Ping) | ✅ | ✅ |
 | Befehle, Kick/Ban/Whitelist (RCON) | ✅ | ✅ (RCON nötig) |
 | Start / Stop / Restart | ✅ | ⚠️ nur Stop via RCON, Start nicht möglich |
-| Live-Konsole / Logs | ✅ | ⚠️ nur mit optionalem Agent/SFTP |
-| Dateizugriff, Backups, server.properties | ✅ | ⚠️ nur mit SFTP-Zugang |
+| Live-Konsole / Logs | ✅ | ❌ |
+| Dateizugriff, Backups, server.properties | ✅ | ❌ |
 | CPU-/RAM-Metriken | ✅ | ❌ |
 
-> **Später (Phase 4+):** Ein kleiner „MineControl Agent" (einzelnes Binary/Skript auf dem
-> externen Host) kann die ⚠️/❌-Lücken schließen — Start/Stop, Logs, Dateien, Metriken.
+> **Bewusste Abgrenzung:** Externe Server werden ausschließlich über RCON/Ping
+> verwaltet (Status, Spieler, Befehle, Kick/Ban/Whitelist). Die ❌-Lücken
+> (Start, Logs, Dateien, Metriken) bleiben Docker-Servern vorbehalten. Ein
+> früher angedachter „MineControl Agent" auf dem externen Host wurde als zu
+> aufwendig **verworfen** — RCON-Verwaltung reicht aus.
 
 ### Relevante Protokolle & Bausteine
 
@@ -166,7 +169,7 @@ ScheduledTask id, serverId, cron, action (RESTART|COMMAND|BACKUP), payload
 - [x] Modpack-Support im Wizard (Modrinth-Packs via itzg-Image; CurseForge offen)
 - [x] Velocity-Netzwerk: Proxy + Subserver (Paper/Spigot) als Gruppe verwalten (Modern-Forwarding, eigenes Docker-Netz; BungeeCord/modded Subserver offen)
 - [x] LuckPerms-Integration für feingranulare In-Game-Berechtigungen (Gruppen, Prefix/Suffix/Weight, Berechtigungen, Spieler; Auto-Install via Modrinth)
-- [ ] MineControl-Agent für externe Server (Start/Stop, Logs, Dateien)
+- ~~MineControl-Agent für externe Server (Start/Stop, Logs, Dateien)~~ — **gestrichen** (Aufwand zu hoch; RCON-Verwaltung externer Server genügt)
 - [x] Welt-Verwaltung: Download, mehrere Welten (auflisten/wechseln/erstellen/löschen), Upload (.tar.gz), Pregen via Chunky
 - [x] 2FA (TOTP) + API-Tokens für Automatisierung
 
