@@ -1,5 +1,6 @@
 import type { Server } from "@prisma/client";
 import * as tar from "tar-stream";
+import { config } from "../../config.js";
 import { markProvisioning } from "../../adapters/docker.js";
 import {
   CONTAINER_MC_PORT,
@@ -32,6 +33,7 @@ export interface ProvisionParams {
   motd?: string;
   onlineMode: boolean;
   modrinthModpack?: string;
+  curseforgeModpack?: string;
   /** Optional: user-defined Docker-Netzwerk, dem der Container beitritt (Velocity). */
   networkName?: string;
   /** Optional: zusätzlicher DNS-Alias im Netzwerk (z. B. „lobby"). */
@@ -85,10 +87,18 @@ async function createContainer(server: Server, p: ProvisionParams): Promise<void
     `MOTD=${p.motd ?? server.name}`,
     `ONLINE_MODE=${p.onlineMode ? "TRUE" : "FALSE"}`,
   ];
-  // Modpack: TYPE=MODRINTH aktiviert den Modrinth-Pfad (Pack bestimmt Loader/
-  // Version). Sonst TYPE/VERSION aus dem Wizard.
+  // Modpack: TYPE=MODRINTH bzw. TYPE=AUTO_CURSEFORGE aktiviert den jeweiligen
+  // Pack-Pfad (Pack bestimmt Loader/Version). Sonst TYPE/VERSION aus dem Wizard.
   if (p.modrinthModpack) {
     env.push("TYPE=MODRINTH", `MODRINTH_MODPACK=${p.modrinthModpack}`);
+  } else if (p.curseforgeModpack) {
+    // Eine URL (http…) → CF_PAGE_URL, sonst Slug → CF_SLUG. Ohne eigenen Key
+    // nutzt das itzg-Image seinen eingebauten Key (CF_API_KEY dann weglassen).
+    const ref = /^https?:\/\//i.test(p.curseforgeModpack)
+      ? `CF_PAGE_URL=${p.curseforgeModpack}`
+      : `CF_SLUG=${p.curseforgeModpack}`;
+    env.push("TYPE=AUTO_CURSEFORGE", ref);
+    if (config.curseforgeApiKey) env.push(`CF_API_KEY=${config.curseforgeApiKey}`);
   } else {
     env.push(`TYPE=${p.edition}`, `VERSION=${p.version}`);
   }

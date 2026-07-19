@@ -32,6 +32,12 @@ export const config = {
   backupDir: optional("BACKUP_DIR", "./backups"),
   sessionSecret,
   encryptionKey: Buffer.from(encryptionKeyHex, "hex"),
+  /**
+   * Optionaler CurseForge-API-Key für Modpack-Downloads (TYPE=AUTO_CURSEFORGE).
+   * Leer = das itzg-Image nutzt seinen eingebauten Key. Eigenen Key von
+   * console.curseforge.com hier hinterlegen, falls gewünscht.
+   */
+  curseforgeApiKey: process.env.CF_API_KEY ?? "",
   isProduction: process.env.NODE_ENV === "production",
   seedAdmin: {
     username: optional("SEED_ADMIN_USER", "admin"),

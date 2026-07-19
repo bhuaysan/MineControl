@@ -76,6 +76,10 @@ const createDockerSchema = z.object({
   onlineMode: z.boolean().default(false),
   eula: z.literal(true),
   modrinthModpack: z.string().max(200).optional(),
+  curseforgeModpack: z.string().max(300).optional(),
+}).refine((d) => !(d.modrinthModpack && d.curseforgeModpack), {
+  message: "Nur ein Modpack (Modrinth ODER CurseForge) angeben",
+  path: ["curseforgeModpack"],
 });
 
 const lifecycleSchema = z.object({ action: z.enum(LIFECYCLE_ACTIONS) });
@@ -239,6 +243,7 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
             motd: data.motd,
             onlineMode: data.onlineMode,
             modrinthModpack: data.modrinthModpack,
+            curseforgeModpack: data.curseforgeModpack,
           }),
         },
       });
@@ -263,6 +268,7 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
         motd: data.motd,
         onlineMode: data.onlineMode,
         modrinthModpack: data.modrinthModpack,
+        curseforgeModpack: data.curseforgeModpack,
       }).catch((err) => {
         request.log.error(err, "Docker-Provisionierung fehlgeschlagen");
       });

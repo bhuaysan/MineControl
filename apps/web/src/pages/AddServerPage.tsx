@@ -96,8 +96,11 @@ function DockerForm() {
   const [motd, setMotd] = useState("");
   const [onlineMode, setOnlineMode] = useState(false);
   const [modpack, setModpack] = useState("");
+  const [cfModpack, setCfModpack] = useState("");
   const [eula, setEula] = useState(false);
-  const usingModpack = modpack.trim().length > 0;
+  const usingModrinth = modpack.trim().length > 0;
+  const usingCurseforge = cfModpack.trim().length > 0;
+  const usingModpack = usingModrinth || usingCurseforge;
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -114,6 +117,7 @@ function DockerForm() {
         onlineMode,
         eula: true,
         modrinthModpack: modpack.trim() || undefined,
+        curseforgeModpack: cfModpack.trim() || undefined,
       }),
     onSuccess: (server) => {
       void queryClient.invalidateQueries({ queryKey: serversQueryKey });
@@ -167,14 +171,25 @@ function DockerForm() {
         <input
           value={modpack}
           onChange={(e) => setModpack(e.target.value)}
-          className={inputClass}
+          disabled={usingCurseforge}
+          className={`${inputClass} ${usingCurseforge ? "opacity-50" : ""}`}
           placeholder="z. B. cobblemon oder .mrpack-URL"
+        />
+      </Field>
+
+      <Field label="CurseForge-Modpack (optional)">
+        <input
+          value={cfModpack}
+          onChange={(e) => setCfModpack(e.target.value)}
+          disabled={usingModrinth}
+          className={`${inputClass} ${usingModrinth ? "opacity-50" : ""}`}
+          placeholder="z. B. all-the-mods-9 oder Modpack-URL"
         />
         {usingModpack && (
           <p className="mt-1 text-xs text-neutral-500">
             Der Pack bestimmt Loader &amp; Version. Wähle die Edition passend zum
-            Pack-Loader, damit der Plugins/Mods-Tab funktioniert. Der erste Start
-            dauert länger (Pack-Download).
+            Pack-Loader (meist FORGE/FABRIC/NEOFORGE), damit der Plugins/Mods-Tab
+            funktioniert. Der erste Start dauert länger (Pack-Download).
           </p>
         )}
       </Field>

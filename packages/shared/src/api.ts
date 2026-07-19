@@ -112,6 +112,12 @@ export interface CreateDockerServerRequest {
    * bestimmt der Pack Loader & Version (TYPE/VERSION werden nicht gesetzt).
    */
   modrinthModpack?: string;
+  /**
+   * Optional: CurseForge-Modpack (Slug oder Projekt-/Datei-URL). Wenn gesetzt,
+   * läuft der Container mit TYPE=AUTO_CURSEFORGE; der Pack bestimmt Loader &
+   * Version. Nicht zusammen mit `modrinthModpack` nutzbar.
+   */
+  curseforgeModpack?: string;
 }
 
 /** Lifecycle-Aktion auf einem Server (nur Docker kann alle). */
