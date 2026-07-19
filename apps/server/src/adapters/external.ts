@@ -106,16 +106,32 @@ export class ExternalAdapter implements ServerAdapter {
     return status.players.sample;
   }
 
-  async sendCommand(cmd: string): Promise<string> {
+  /**
+   * Stellt eine RCON-Verbindung her und hängt VOR dem Connect einen
+   * `error`-Listener an. Ohne ihn würde ein asynchrones Socket-`error`-Event
+   * (z. B. ECONNRESET, wenn ein bootender Server die Verbindung kappt) als
+   * „unhandled error" den gesamten Backend-Prozess abstürzen lassen — der
+   * try/catch um `send()` fängt solche Events nicht.
+   */
+  private async connectRcon(): Promise<Rcon> {
     if (!this.cfg.rcon) {
       throw new UnsupportedOperationError("Befehl senden (RCON nicht konfiguriert)");
     }
-    const rcon = await Rcon.connect({
+    const rcon = new Rcon({
       host: this.cfg.host,
       port: this.cfg.rcon.port,
       password: this.cfg.rcon.password,
       timeout: 5000,
     });
+    // Fehler abfangen, damit das Event nie „unhandled" ist; die eigentliche
+    // Fehlerweitergabe passiert über die abgelehnten connect()/send()-Promises.
+    rcon.on("error", () => {});
+    await rcon.connect();
+    return rcon;
+  }
+
+  async sendCommand(cmd: string): Promise<string> {
+    const rcon = await this.connectRcon();
     try {
       return await rcon.send(cmd);
     } finally {
@@ -153,12 +169,7 @@ export class ExternalAdapter implements ServerAdapter {
 
     if (this.cfg.rcon) {
       try {
-        const rcon = await Rcon.connect({
-          host: this.cfg.host,
-          port: this.cfg.rcon.port,
-          password: this.cfg.rcon.password,
-          timeout: 5000,
-        });
+        const rcon = await this.connectRcon();
         await rcon.end().catch(() => {});
         out.rcon = { ok: true };
       } catch (err) {

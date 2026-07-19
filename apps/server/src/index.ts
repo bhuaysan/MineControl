@@ -25,6 +25,17 @@ import { userRoutes } from "./modules/users/routes.js";
 import { worldRoutes } from "./modules/world/routes.js";
 import { registerWebsocket } from "./ws/index.js";
 
+// Sicherheitsnetz: Das Backend steuert Docker & RCON — ein einzelner
+// asynchroner Fehler (z. B. ein Socket-`error`-Event einer flatterhaften
+// RCON-Verbindung zu einem bootenden Server) darf den ganzen Prozess nicht
+// abstürzen lassen. Solche Fehler werden protokolliert statt fatal behandelt.
+process.on("uncaughtException", (err) => {
+  console.error("Unbehandelte Ausnahme (Prozess bleibt am Leben):", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("Unbehandelte Promise-Ablehnung:", reason);
+});
+
 async function main(): Promise<void> {
   const app = Fastify({
     logger: {
