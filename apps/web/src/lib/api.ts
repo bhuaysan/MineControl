@@ -20,6 +20,10 @@ import type {
   AddSubserverRequest,
   CreateNetworkRequest,
   NetworkDto,
+  CreateWorldRequest,
+  PregenRequest,
+  PregenResponse,
+  WorldListResponse,
   NotificationSettingsDto,
   OnlinePlayer,
   PlayerListItemDto,
@@ -221,6 +225,50 @@ export const api = {
   downloadFileUrl: (id: string, path: string) =>
     `/api/servers/${id}/files/download?path=${encodeURIComponent(path)}`,
   worldDownloadUrl: (id: string) => `/api/servers/${id}/world/download`,
+
+  // Welt-Verwaltung
+  listWorlds: (id: string) => request<WorldListResponse>(`/api/servers/${id}/worlds`),
+  switchWorld: (id: string, name: string) =>
+    request<{ ok: true }>(`/api/servers/${id}/worlds/switch`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  createWorld: (id: string, body: CreateWorldRequest) =>
+    request<{ ok: true }>(`/api/servers/${id}/worlds`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteWorld: (id: string, name: string) =>
+    request<{ ok: true }>(`/api/servers/${id}/worlds/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }),
+  uploadWorld: async (id: string, name: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(
+      `/api/servers/${id}/worlds/upload?name=${encodeURIComponent(name)}`,
+      { method: "POST", credentials: "include", body: form },
+    );
+    if (!res.ok) {
+      let message = res.statusText;
+      try {
+        const body = (await res.json()) as { message?: string };
+        if (body.message) message = body.message;
+      } catch {
+        /* kein JSON */
+      }
+      throw new ApiRequestError(res.status, message);
+    }
+  },
+  startPregen: (id: string, body: PregenRequest) =>
+    request<PregenResponse>(`/api/servers/${id}/worlds/pregen`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  cancelPregen: (id: string) =>
+    request<{ response: string }>(`/api/servers/${id}/worlds/pregen/cancel`, {
+      method: "POST",
+    }),
 
   // Plugins/Mods (Modrinth)
   searchMods: (id: string, q: string) =>

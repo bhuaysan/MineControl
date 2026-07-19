@@ -167,7 +167,7 @@ ScheduledTask id, serverId, cron, action (RESTART|COMMAND|BACKUP), payload
 - [x] Velocity-Netzwerk: Proxy + Subserver (Paper/Spigot) als Gruppe verwalten (Modern-Forwarding, eigenes Docker-Netz; BungeeCord/modded Subserver offen)
 - [ ] LuckPerms-Integration für feingranulare In-Game-Berechtigungen
 - [ ] MineControl-Agent für externe Server (Start/Stop, Logs, Dateien)
-- [~] Welt-Verwaltung: **Welt-Download ✅**; mehrere Welten & Pregen-Trigger offen
+- [x] Welt-Verwaltung: Download, mehrere Welten (auflisten/wechseln/erstellen/löschen), Upload (.tar.gz), Pregen via Chunky
 - [x] 2FA (TOTP) + API-Tokens für Automatisierung
 
 ---

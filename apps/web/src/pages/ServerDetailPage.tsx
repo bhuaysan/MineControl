@@ -14,6 +14,7 @@ import { ServerActions } from "../components/ServerActions.js";
 import { ServerPropertiesForm } from "../components/ServerPropertiesForm.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 import { TasksPanel } from "../components/TasksPanel.js";
+import { WorldsPanel } from "../components/WorldsPanel.js";
 import { useServerMetrics } from "../hooks/useServerMetrics.js";
 import { serversQueryKey } from "../hooks/useServers.js";
 import { api } from "../lib/api.js";
@@ -25,6 +26,7 @@ type Tab =
   | "players"
   | "files"
   | "mods"
+  | "worlds"
   | "backups"
   | "tasks"
   | "settings";
@@ -127,6 +129,11 @@ export function ServerDetailPage() {
   if (isModdable) {
     tabs.push(["mods", ["PAPER", "SPIGOT", "VELOCITY", "BUNGEECORD"].includes(server.edition) ? "Plugins" : "Mods"]);
   }
+  const isWorldServer =
+    isDocker &&
+    !["VELOCITY", "BUNGEECORD"].includes(server.edition) &&
+    can("MODERATOR");
+  if (isWorldServer) tabs.push(["worlds", "Welten"]);
   if (isDocker) tabs.push(["backups", "Backups"]);
   if (showTasks) tabs.push(["tasks", "Zeitpläne"]);
   if (hasSettings) tabs.push(["settings", "Einstellungen"]);
@@ -279,6 +286,8 @@ export function ServerDetailPage() {
       {tab === "mods" && isModdable && (
         <ModsPanel serverId={server.id} edition={server.edition} />
       )}
+
+      {tab === "worlds" && isWorldServer && <WorldsPanel serverId={server.id} />}
 
       {tab === "backups" && isDocker && <BackupsPanel serverId={server.id} />}
 

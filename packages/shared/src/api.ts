@@ -471,6 +471,53 @@ export interface CreateSubserverRequest {
 
 export type AddSubserverRequest = AttachSubserverRequest | CreateSubserverRequest;
 
+// ── Phase 4: Welt-Verwaltung (nur Docker) ─────────────────────────────────────
+
+/** Eine Welt im /data-Volume (Ordner mit level.dat, ohne Nether/End-Companions). */
+export interface WorldDto {
+  name: string;
+  active: boolean;
+  sizeBytes: number;
+}
+
+/** Antwort von GET /api/servers/:id/worlds. */
+export interface WorldListResponse {
+  /** Aktuell aktive Welt (server.properties `level-name`). */
+  active: string;
+  worlds: WorldDto[];
+}
+
+/** Regeln für Weltnamen (ein Pfadsegment, keine Sonderzeichen). */
+export const WORLD_NAME_REGEX = /^[A-Za-z0-9_.-]{1,48}$/;
+
+export interface SwitchWorldRequest {
+  name: string;
+}
+
+export interface CreateWorldRequest {
+  name: string;
+  /** Optionaler Seed; leer = zufällig. */
+  seed?: string;
+}
+
+/** Pregeneration via Chunky. */
+export interface PregenRequest {
+  /** Radius in Blöcken um den Welt-Spawn (0,0). */
+  radius: number;
+  /** Zu pregenerierende Welt; Standard = aktive Welt. */
+  world?: string;
+}
+
+export interface PregenResponse {
+  /** Chunky war nicht installiert und wurde installiert (Server startet neu). */
+  installed: boolean;
+  /** Pregen wurde gestartet. */
+  started: boolean;
+  message: string;
+  /** RCON-Ausgabe von Chunky, falls gestartet. */
+  output?: string;
+}
+
 /** Generische Fehlerantwort der API. */
 export interface ApiError {
   error: string;
