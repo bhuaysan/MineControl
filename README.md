@@ -40,7 +40,7 @@ pnpm db:migrate
 ## Entwicklung
 
 ```bash
-# Backend (Port 3000) und Frontend (Port 5173) parallel
+# Backend (Port aus .env, Standard 3000) und Frontend (Port 5173) parallel
 pnpm dev
 
 # oder einzeln
@@ -50,6 +50,14 @@ pnpm dev:web
 
 Frontend unter <http://localhost:5173> öffnen. Der Vite-Dev-Server proxyt `/api`
 und `/ws` ans Backend, damit das Session-Cookie same-origin bleibt.
+
+Läuft auf Port 3000 schon eine andere App, das Backend auf einen freien Port
+legen: in `apps/server/.env` `PORT=3055` setzen **und** den Frontend-Proxy per
+`MC_SERVER_PORT` darauf zeigen lassen:
+
+```bash
+MC_SERVER_PORT=3055 pnpm dev
+```
 
 Standard-Login (aus `.env`): `admin` / `changeme` — **nach dem ersten Start ändern.**
 
