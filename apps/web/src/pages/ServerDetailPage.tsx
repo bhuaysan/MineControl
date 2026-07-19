@@ -243,6 +243,22 @@ export function ServerDetailPage() {
                         : 0
                     }
                   />
+                  {metrics.tps != null && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-neutral-400">TPS</span>
+                      <span
+                        className={`font-mono ${
+                          metrics.tps >= 19
+                            ? "text-status-online"
+                            : metrics.tps >= 15
+                              ? "text-yellow-400"
+                              : "text-status-error"
+                        }`}
+                      >
+                        {metrics.tps.toFixed(1)} / 20
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </section>

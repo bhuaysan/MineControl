@@ -242,6 +242,8 @@ export interface MetricSampleDto {
   cpuPercent?: number;
   ramUsedMb?: number;
   ramMaxMb?: number;
+  /** Server-Ticks pro Sekunde (nur Paper/Spigot), 0–20. */
+  tps?: number;
 }
 
 // ── Phase 3: Datei-Manager (nur Docker) ──────────────────────────────────────

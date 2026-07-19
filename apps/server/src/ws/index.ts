@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { createDockerAdapter } from "../adapters/registry.js";
 import { SESSION_COOKIE } from "../config.js";
 import { prisma } from "../db.js";
+import { TPS_EDITIONS, sampleTps } from "../modules/metrics/tps.js";
 import { listServerDtos, toServerDto } from "../modules/servers/service.js";
 
 /** Eine aktive WebSocket-Verbindung mit ihren Abos. */
@@ -90,7 +91,7 @@ async function beginMetrics(serverId: string): Promise<() => void> {
   const server = await prisma.server.findUnique({ where: { id: serverId } });
   if (!server || server.type !== "DOCKER") throw new Error("Kein Docker-Server");
   const adapter = createDockerAdapter(server);
-  return adapter.followStats((s) =>
+  const stopStats = await adapter.followStats((s) =>
     broadcast(`metrics:${serverId}`, {
       type: "metrics.update",
       serverId,
@@ -99,6 +100,24 @@ async function beginMetrics(serverId: string): Promise<() => void> {
       ramMaxMb: s.ramMaxMb,
     }),
   );
+
+  // TPS (Paper/Spigot) wird per RCON gepollt — docker stats liefert das nicht.
+  let tpsTimer: ReturnType<typeof setInterval> | undefined;
+  if (TPS_EDITIONS.includes(server.edition)) {
+    const pollTps = async (): Promise<void> => {
+      const tps = await sampleTps(adapter);
+      if (tps != null) {
+        broadcast(`metrics:${serverId}`, { type: "metrics.update", serverId, tps });
+      }
+    };
+    void pollTps();
+    tpsTimer = setInterval(() => void pollTps(), 10_000);
+  }
+
+  return () => {
+    stopStats();
+    if (tpsTimer) clearInterval(tpsTimer);
+  };
 }
 
 function acquire(

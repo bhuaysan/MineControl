@@ -105,6 +105,7 @@ model MetricSample {
   cpuPercent    Float?
   ramUsedMb     Int?
   ramMaxMb      Int?
+  tps           Float?
 
   @@index([serverId, timestamp])
 }

@@ -159,7 +159,7 @@ ScheduledTask id, serverId, cron, action (RESTART|COMMAND|BACKUP), payload
 ### Phase 3 — Betrieb & Komfort ✅ abgeschlossen
 - [x] Backups: manuell + Zeitplan (Cron), Retention, Restore per Klick
 - [x] Geplante Tasks: automatische Restarts, wiederkehrende Befehle (z.B. Broadcast)
-- [x] Metrik-Historie: Spielerzahlen, RAM, CPU über Zeit (Graphen) — *TPS offen*
+- [x] Metrik-Historie: Spielerzahlen, RAM, CPU, **TPS** über Zeit (Graphen)
 - [x] Benachrichtigungen: Discord-Webhook (Server down, Backup/Task fehlgeschlagen) — *E-Mail offen*
 - [x] Datei-Manager für Docker-Server (Volumes browsen, Dateien editieren/hochladen)
 - [x] Spieler-Profile: Playtime, Sessions-Historie, Admin-Notizen, Ban-Historie

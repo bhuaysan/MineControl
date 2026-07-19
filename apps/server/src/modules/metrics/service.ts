@@ -4,6 +4,7 @@ import { createAdapter } from "../../adapters/registry.js";
 import { prisma } from "../../db.js";
 import { notifyServerDown } from "../notifications/service.js";
 import { reconcileSessions } from "../players/service.js";
+import { TPS_EDITIONS, sampleTps } from "./tps.js";
 
 /** Letzter bekannter Zustand je Server — für Down-Erkennung. */
 const prevStates = new Map<string, ServerState>();
@@ -50,6 +51,12 @@ async function sampleAll(): Promise<void> {
         }
       }
 
+      // TPS nur für Paper/Spigot (via RCON), wenn der Server läuft.
+      let tps: number | undefined;
+      if (status.online && TPS_EDITIONS.includes(server.edition)) {
+        tps = (await sampleTps(adapter)) ?? undefined;
+      }
+
       await prisma.metricSample.create({
         data: {
           serverId: server.id,
@@ -57,6 +64,7 @@ async function sampleAll(): Promise<void> {
           cpuPercent,
           ramUsedMb,
           ramMaxMb,
+          tps,
         },
       });
 
@@ -113,5 +121,6 @@ export async function getMetricHistory(
     cpuPercent: s.cpuPercent ?? undefined,
     ramUsedMb: s.ramUsedMb ?? undefined,
     ramMaxMb: s.ramMaxMb ?? undefined,
+    tps: s.tps ?? undefined,
   }));
 }

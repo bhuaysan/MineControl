@@ -4,7 +4,7 @@ import { useState } from "react";
 import { api } from "../lib/api.js";
 
 type Range = "1h" | "6h" | "24h" | "7d";
-type MetricKey = "players" | "cpu" | "ram";
+type MetricKey = "players" | "cpu" | "ram" | "tps";
 
 const RANGES: [Range, string][] = [
   ["1h", "1 h"],
@@ -17,6 +17,7 @@ const METRICS: { key: MetricKey; label: string; color: string }[] = [
   { key: "players", label: "Spieler", color: "#4ade80" },
   { key: "cpu", label: "CPU", color: "#fbbf24" },
   { key: "ram", label: "RAM", color: "#60a5fa" },
+  { key: "tps", label: "TPS", color: "#f472b6" },
 ];
 
 interface Point {
@@ -32,6 +33,7 @@ function toPoints(samples: MetricSampleDto[], metric: MetricKey): Point[] {
     let v: number | undefined;
     if (metric === "players") v = s.playersOnline;
     else if (metric === "cpu") v = s.cpuPercent;
+    else if (metric === "tps") v = s.tps;
     else v = s.ramUsedMb;
     if (v != null) points.push({ t, v });
   }
@@ -56,7 +58,9 @@ export function MetricHistoryChart({ serverId }: { serverId: string }) {
   const points = toPoints(data ?? [], metric);
 
   const unit = metric === "cpu" ? "%" : metric === "ram" ? " MB" : "";
-  const maxV = Math.max(metric === "cpu" ? 100 : 1, ...points.map((p) => p.v));
+  // TPS hat eine feste Skala (0–20), CPU 0–100; sonst nach Datenmaximum.
+  const floor = metric === "cpu" ? 100 : metric === "tps" ? 20 : 1;
+  const maxV = metric === "tps" ? 20 : Math.max(floor, ...points.map((p) => p.v));
   const tMin = points.length ? points[0]!.t : 0;
   const tMax = points.length ? points[points.length - 1]!.t : 1;
   const tSpan = Math.max(tMax - tMin, 1);

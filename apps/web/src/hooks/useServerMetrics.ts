@@ -5,6 +5,7 @@ export interface LiveMetrics {
   cpuPercent?: number;
   ramUsedMb?: number;
   ramMaxMb?: number;
+  tps?: number;
 }
 
 /**
@@ -21,11 +22,15 @@ export function useServerMetrics(serverId: string, enabled: boolean): LiveMetric
     }
     const close = openTopicSocket(`metrics:${serverId}`, (msg) => {
       if (msg.type === "metrics.update" && msg.serverId === serverId) {
-        setMetrics({
-          cpuPercent: msg.cpuPercent,
-          ramUsedMb: msg.ramUsedMb,
-          ramMaxMb: msg.ramMaxMb,
-        });
+        // CPU/RAM (docker stats) und TPS (RCON-Poll) kommen in getrennten
+        // Nachrichten — daher mergen statt ersetzen.
+        setMetrics((prev) => ({
+          ...prev,
+          ...(msg.cpuPercent !== undefined
+            ? { cpuPercent: msg.cpuPercent, ramUsedMb: msg.ramUsedMb, ramMaxMb: msg.ramMaxMb }
+            : {}),
+          ...(msg.tps !== undefined ? { tps: msg.tps } : {}),
+        }));
       }
     });
     return close;
