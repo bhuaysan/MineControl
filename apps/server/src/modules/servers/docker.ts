@@ -5,6 +5,8 @@ import {
   CONTAINER_MC_PORT,
   CONTAINER_RCON_PORT,
   MC_IMAGE,
+  PROXY_DATA_DIR,
+  PROXY_IMAGE,
   containerName,
   dataVolumeName,
   docker,
@@ -30,25 +32,32 @@ export interface ProvisionParams {
   motd?: string;
   onlineMode: boolean;
   modrinthModpack?: string;
+  /** Optional: user-defined Docker-Netzwerk, dem der Container beitritt (Velocity). */
+  networkName?: string;
+  /** Optional: zusätzlicher DNS-Alias im Netzwerk (z. B. „lobby"). */
+  networkAlias?: string;
 }
+
+/** Standard-UID/GID der itzg-Images (minecraft-server & mc-proxy laufen als 1000). */
+const CONTAINER_UID = 1000;
 
 /** MB → itzg-Speicherangabe („2G" bzw. „1536M"). */
 function memoryArg(mb: number): string {
   return mb % 1024 === 0 ? `${mb / 1024}G` : `${mb}M`;
 }
 
-/** Lädt das MC-Image, falls noch nicht vorhanden, mit Fortschritt in die Konsole. */
-async function ensureImage(serverId: string): Promise<void> {
+/** Lädt ein Image, falls noch nicht vorhanden, mit Fortschritt in die Konsole. */
+async function ensureImage(serverId: string, image = MC_IMAGE): Promise<void> {
   const present = await docker.listImages({
-    filters: { reference: [MC_IMAGE] },
+    filters: { reference: [image] },
   });
   if (present.length > 0) {
     pushConsoleLine(serverId, "» Image bereits vorhanden.");
     return;
   }
-  pushConsoleLine(serverId, `» Lade Image ${MC_IMAGE} …`);
+  pushConsoleLine(serverId, `» Lade Image ${image} …`);
   await new Promise<void>((resolve, reject) => {
-    docker.pull(MC_IMAGE, (err: Error | null, stream: NodeJS.ReadableStream) => {
+    docker.pull(image, (err: Error | null, stream: NodeJS.ReadableStream) => {
       if (err || !stream) return reject(err ?? new Error("Kein Pull-Stream"));
       let last = "";
       docker.modem.followProgress(
@@ -95,6 +104,9 @@ async function createContainer(server: Server, p: ProvisionParams): Promise<void
     Env: env,
     Labels: { "com.minecontrol.serverId": server.id },
     ExposedPorts: { [mc]: {}, [rcon]: {} },
+    // Netzwerk-Subserver treten dem user-defined Bridge bei → der Proxy erreicht
+    // sie per Container-Namen. Host-Ports bleiben (Status-Ping/RCON via 127.0.0.1).
+    ...networkingConfig(p),
     HostConfig: {
       // Nur an localhost binden — der Zugriff läuft über MineControl.
       PortBindings: {
@@ -106,8 +118,23 @@ async function createContainer(server: Server, p: ProvisionParams): Promise<void
       // damit die RAM-Metrik aussagekräftig ist, ohne OOM-Kills zu riskieren.
       Memory: (p.memoryMb + 1024) * 1_048_576,
       RestartPolicy: { Name: "unless-stopped" },
+      ...(p.networkName ? { NetworkMode: p.networkName } : {}),
     },
   });
+}
+
+/** Baut die NetworkingConfig für den Netzwerkbeitritt (leer, wenn kein Netz). */
+function networkingConfig(p: { networkName?: string; networkAlias?: string }): {
+  NetworkingConfig?: { EndpointsConfig: Record<string, { Aliases?: string[] }> };
+} {
+  if (!p.networkName) return {};
+  return {
+    NetworkingConfig: {
+      EndpointsConfig: {
+        [p.networkName]: p.networkAlias ? { Aliases: [p.networkAlias] } : {},
+      },
+    },
+  };
 }
 
 /**
@@ -237,7 +264,127 @@ export async function writeServerProperties(
   }
   const merged = mergeProperties(raw, changes);
   const pack = tar.pack();
-  pack.entry({ name: "server.properties" }, merged);
+  // uid/gid = 1000: der itzg-Container läuft als 1000 und muss die Datei beim
+  // (Neu-)Start selbst überschreiben können — root-owned führt zu AccessDenied.
+  pack.entry({ name: "server.properties", uid: CONTAINER_UID, gid: CONTAINER_UID }, merged);
   pack.finalize();
   await container.putArchive(pack, { path: "/data" });
+}
+
+// ── Generische Datei-Helfer (für Velocity-/Paper-Konfiguration) ───────────────
+
+/** Liest eine Textdatei aus dem Container-Volume; `null`, falls nicht vorhanden. */
+export async function readDataTextFile(
+  serverId: string,
+  path: string,
+): Promise<string | null> {
+  const container = docker.getContainer(containerName(serverId));
+  try {
+    const archive = await container.getArchive({ path });
+    return await extractSingleFile(archive);
+  } catch {
+    return null;
+  }
+}
+
+/** Schreibt eine oder mehrere Dateien in ein Verzeichnis des Container-Volumes. */
+export async function putDataFiles(
+  serverId: string,
+  dir: string,
+  files: { name: string; content: string }[],
+): Promise<void> {
+  const container = docker.getContainer(containerName(serverId));
+  const pack = tar.pack();
+  for (const f of files) {
+    await new Promise<void>((resolve, reject) => {
+      // uid/gid = 1000: Dateien müssen dem Container-User gehören (siehe
+      // writeServerProperties), sonst kann der Server sie nicht überschreiben.
+      pack.entry(
+        { name: f.name, uid: CONTAINER_UID, gid: CONTAINER_UID },
+        f.content,
+        (err) => (err ? reject(err) : resolve()),
+      );
+    });
+  }
+  pack.finalize();
+  await container.putArchive(pack, { path: dir });
+}
+
+// ── Velocity-Proxy-Provisionierung ────────────────────────────────────────────
+
+/** Parameter zum Provisionieren eines Velocity-Proxy-Containers. */
+export interface ProxyProvisionParams {
+  version: string;
+  memoryMb: number;
+  mcPort: number;
+  networkName: string;
+  /** Vollständiger Inhalt der velocity.toml. */
+  velocityToml: string;
+  /** Modern-Forwarding-Secret (Klartext). */
+  forwardingSecret: string;
+}
+
+/** Erstellt (ohne Start) den Velocity-Container aus dem mc-proxy-Image. */
+async function createProxyContainer(
+  server: Server,
+  p: ProxyProvisionParams,
+): Promise<void> {
+  // mc-proxy: kein EULA/RCON; Velocity bindet standardmäßig auf 25565.
+  const env = [
+    "TYPE=VELOCITY",
+    `VELOCITY_VERSION=${p.version}`,
+    `MEMORY=${memoryArg(p.memoryMb)}`,
+  ];
+  const mc = `${CONTAINER_MC_PORT}/tcp`;
+  await docker.createContainer({
+    name: containerName(server.id),
+    Image: PROXY_IMAGE,
+    Env: env,
+    Labels: { "com.minecontrol.serverId": server.id },
+    ExposedPorts: { [mc]: {} },
+    NetworkingConfig: { EndpointsConfig: { [p.networkName]: {} } },
+    HostConfig: {
+      PortBindings: {
+        [mc]: [{ HostIp: "127.0.0.1", HostPort: String(p.mcPort) }],
+      },
+      Binds: [`${dataVolumeName(server.id)}:${PROXY_DATA_DIR}`],
+      Memory: (p.memoryMb + 1024) * 1_048_576,
+      RestartPolicy: { Name: "unless-stopped" },
+      NetworkMode: p.networkName,
+    },
+  });
+}
+
+/**
+ * Legt einen Velocity-Proxy an: Image ziehen → Container erstellen →
+ * velocity.toml + forwarding.secret ins (noch leere) Volume schreiben → starten.
+ * Die Config wird vor dem ersten Start platziert, damit Velocity sie direkt nutzt.
+ */
+export async function provisionProxyServer(
+  server: Server,
+  params: ProxyProvisionParams,
+): Promise<void> {
+  markProvisioning(server.id, true);
+  await broadcastServerStatus(server.id);
+  try {
+    pushConsoleLine(server.id, `» Richte Velocity-Proxy „${server.name}" ein …`);
+    await ensureImage(server.id, PROXY_IMAGE);
+    pushConsoleLine(server.id, "» Erstelle Proxy-Container …");
+    await createProxyContainer(server, params);
+    pushConsoleLine(server.id, "» Schreibe velocity.toml + forwarding.secret …");
+    await putDataFiles(server.id, PROXY_DATA_DIR, [
+      { name: "velocity.toml", content: params.velocityToml },
+      { name: "forwarding.secret", content: params.forwardingSecret },
+    ]);
+    pushConsoleLine(server.id, "» Starte Proxy …");
+    await createDockerAdapter(server).start();
+    pushConsoleLine(server.id, "» Proxy gestartet.");
+  } catch (err) {
+    pushConsoleLine(server.id, `Fehler beim Einrichten: ${(err as Error).message}`);
+    throw err;
+  } finally {
+    markProvisioning(server.id, false);
+    reattachServerStreams(server.id);
+    await broadcastServerStatus(server.id);
+  }
 }

@@ -12,6 +12,7 @@ import { fileRoutes } from "./modules/files/routes.js";
 import { metricRoutes } from "./modules/metrics/routes.js";
 import { startMetricSampler } from "./modules/metrics/service.js";
 import { modRoutes } from "./modules/mods/routes.js";
+import { networkRoutes } from "./modules/networks/routes.js";
 import { notificationRoutes } from "./modules/notifications/routes.js";
 import { playerRoutes } from "./modules/players/routes.js";
 import { serverRoutes } from "./modules/servers/routes.js";
@@ -50,6 +51,7 @@ async function main(): Promise<void> {
   await app.register(taskRoutes);
   await app.register(metricRoutes);
   await app.register(modRoutes);
+  await app.register(networkRoutes);
   await app.register(notificationRoutes);
   await app.register(playerRoutes);
   await app.register(tokenRoutes);

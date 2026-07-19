@@ -17,6 +17,9 @@ import type {
   InstalledModDto,
   MetricSampleDto,
   ModSearchHitDto,
+  AddSubserverRequest,
+  CreateNetworkRequest,
+  NetworkDto,
   NotificationSettingsDto,
   OnlinePlayer,
   PlayerListItemDto,
@@ -270,6 +273,26 @@ export const api = {
     }),
   revokeToken: (id: string) =>
     request<{ ok: true }>(`/api/tokens/${id}`, { method: "DELETE" }),
+
+  // Velocity-Netzwerke
+  listNetworks: () => request<NetworkDto[]>("/api/networks"),
+  getNetwork: (id: string) => request<NetworkDto>(`/api/networks/${id}`),
+  createNetwork: (body: CreateNetworkRequest) =>
+    request<NetworkDto>("/api/networks", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  addSubserver: (id: string, body: AddSubserverRequest) =>
+    request<NetworkDto>(`/api/networks/${id}/subservers`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  detachSubserver: (id: string, serverId: string) =>
+    request<{ ok: true }>(`/api/networks/${id}/subservers/${serverId}`, {
+      method: "DELETE",
+    }),
+  deleteNetwork: (id: string) =>
+    request<{ ok: true }>(`/api/networks/${id}`, { method: "DELETE" }),
 
   listAudit: () => request<AuditEntryDto[]>("/api/audit"),
 

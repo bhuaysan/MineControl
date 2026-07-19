@@ -62,6 +62,10 @@ model Server {
   // Docker (Phase 2)
   dockerContainerId String?
   dockerConfig      String? // JSON
+  // Netzwerk (Phase 4 — Velocity): Zugehörigkeit als Subserver hinter einem Proxy.
+  networkId         String?
+  network           Network?   @relation("NetworkMembers", fields: [networkId], references: [id], onDelete: SetNull)
+  networkAlias      String? // Name, unter dem der Proxy diesen Subserver kennt (z. B. „lobby")
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
@@ -70,6 +74,24 @@ model Server {
   metrics   MetricSample[]
   backups   Backup[]
   tasks     ScheduledTask[]
+  proxyOf   Network?        @relation("NetworkProxy")
+}
+
+// Phase 4 — Velocity-Netzwerk: ein Proxy-Server + N Subserver als Gruppe.
+model Network {
+  id                  String   @id @default(cuid())
+  name                String
+  // Der Velocity-Proxy (eigener Server-Datensatz, type DOCKER, edition VELOCITY).
+  proxyServer         Server   @relation("NetworkProxy", fields: [proxyServerId], references: [id], onDelete: Cascade)
+  proxyServerId       String   @unique
+  // Modern-Forwarding-Secret (verschlüsselt) — Proxy und alle Subserver teilen es.
+  forwardingSecretEnc String
+  // Name des user-defined Docker-Bridge-Netzwerks.
+  dockerNetworkName   String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  members Server[] @relation("NetworkMembers")
 }
 
 // Phase 3 — Betrieb & Komfort

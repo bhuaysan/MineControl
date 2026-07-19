@@ -13,6 +13,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", icon: "▣" },
+  { to: "/networks", label: "Netzwerke", icon: "🕸" },
   { to: "/players", label: "Spieler", icon: "👥" },
   { to: "/users", label: "Benutzer", icon: "👤", adminOnly: true },
   { to: "/audit", label: "Audit-Log", icon: "📋", adminOnly: true },

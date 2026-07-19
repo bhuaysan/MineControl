@@ -164,7 +164,7 @@ ScheduledTask id, serverId, cron, action (RESTART|COMMAND|BACKUP), payload
 ### Phase 4 — Ausbau (in Arbeit)
 - [x] Plugin-/Mod-Verwaltung: Suche & Install via **Modrinth-API** (offene API, gut dokumentiert)
 - [x] Modpack-Support im Wizard (Modrinth-Packs via itzg-Image; CurseForge offen)
-- [ ] Velocity/Bungee-Netzwerk: Proxy + Subserver als Gruppe verwalten
+- [x] Velocity-Netzwerk: Proxy + Subserver (Paper/Spigot) als Gruppe verwalten (Modern-Forwarding, eigenes Docker-Netz; BungeeCord/modded Subserver offen)
 - [ ] LuckPerms-Integration für feingranulare In-Game-Berechtigungen
 - [ ] MineControl-Agent für externe Server (Start/Stop, Logs, Dateien)
 - [~] Welt-Verwaltung: **Welt-Download ✅**; mehrere Welten & Pregen-Trigger offen

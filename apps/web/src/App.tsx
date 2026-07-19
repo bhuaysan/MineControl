@@ -9,6 +9,7 @@ import { AddServerPage } from "./pages/AddServerPage.js";
 import { AuditPage } from "./pages/AuditPage.js";
 import { DashboardPage } from "./pages/DashboardPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
+import { NetworksPage } from "./pages/NetworksPage.js";
 import { PlayerProfilePage } from "./pages/PlayerProfilePage.js";
 import { PlayersPage } from "./pages/PlayersPage.js";
 import { ServerDetailPage } from "./pages/ServerDetailPage.js";
@@ -68,6 +69,14 @@ function AppRoutes() {
         element={
           <RequireAuth>
             <ServerDetailPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/networks"
+        element={
+          <RequireAuth>
+            <NetworksPage />
           </RequireAuth>
         }
       />

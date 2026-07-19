@@ -1,0 +1,530 @@
+import { randomBytes } from "node:crypto";
+import type { Network, Server } from "@prisma/client";
+import type {
+  NetworkDto,
+  NetworkMemberDto,
+  ServerEdition,
+} from "@minecontrol/shared";
+import { createAdapter, createDockerAdapter } from "../../adapters/registry.js";
+import {
+  PROXY_DATA_DIR,
+  ensureDockerNetwork,
+  networkName,
+  removeDockerNetwork,
+} from "../../adapters/dockerClient.js";
+import { decryptSecret, encryptSecret } from "../../crypto.js";
+import { prisma } from "../../db.js";
+import {
+  broadcastServerStatus,
+  detachServerStreams,
+  pushConsoleLine,
+  reattachServerStreams,
+} from "../../ws/index.js";
+import { suppressDownAlert } from "../metrics/service.js";
+import {
+  destroyDockerServer,
+  provisionDockerServer,
+  provisionProxyServer,
+  putDataFiles,
+  readDataTextFile,
+} from "../servers/docker.js";
+import { patchPaperVelocity, renderVelocityToml } from "./velocity.js";
+
+/** Fehler mit HTTP-Status für die Route-Schicht. */
+export class NetworkError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+const PAPER_GLOBAL_PATH = "/data/config/paper-global.yml";
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Wirft, falls ein Host-Port bereits von einem Server belegt ist. */
+async function assertPortFree(...ports: number[]): Promise<void> {
+  const clash = await prisma.server.findFirst({
+    where: {
+      OR: ports.flatMap((p) => [{ port: p }, { rconPort: p }]),
+    },
+  });
+  if (clash) {
+    throw new NetworkError(409, "port_in_use", `Port bereits belegt`);
+  }
+}
+
+// ── DTO-Aufbau ────────────────────────────────────────────────────────────────
+
+async function serverState(server: Server): Promise<string> {
+  try {
+    return (await createAdapter(server).getStatus()).state;
+  } catch {
+    return "UNKNOWN";
+  }
+}
+
+type NetworkWithRelations = Network & {
+  proxyServer: Server;
+  members: Server[];
+};
+
+async function toNetworkDto(network: NetworkWithRelations): Promise<NetworkDto> {
+  const members: NetworkMemberDto[] = await Promise.all(
+    [...network.members]
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map(async (m) => ({
+        serverId: m.id,
+        alias: m.networkAlias ?? m.id,
+        name: m.name,
+        edition: m.edition as ServerEdition,
+        state: (await serverState(m)) as NetworkMemberDto["state"],
+      })),
+  );
+  return {
+    id: network.id,
+    name: network.name,
+    proxy: {
+      serverId: network.proxyServer.id,
+      name: network.proxyServer.name,
+      edition: network.proxyServer.edition as ServerEdition,
+      host: network.proxyServer.host,
+      port: network.proxyServer.port,
+      state: (await serverState(network.proxyServer)) as NetworkDto["proxy"]["state"],
+    },
+    members,
+    createdAt: network.createdAt.toISOString(),
+  };
+}
+
+function includeRelations() {
+  return { proxyServer: true, members: true } as const;
+}
+
+export async function listNetworkDtos(): Promise<NetworkDto[]> {
+  const networks = await prisma.network.findMany({
+    include: includeRelations(),
+    orderBy: { createdAt: "asc" },
+  });
+  return Promise.all(networks.map((n) => toNetworkDto(n)));
+}
+
+export async function getNetworkDto(id: string): Promise<NetworkDto | null> {
+  const network = await prisma.network.findUnique({
+    where: { id },
+    include: includeRelations(),
+  });
+  return network ? toNetworkDto(network) : null;
+}
+
+// ── Proxy-Konfiguration schreiben ──────────────────────────────────────────────
+
+/** Erzeugt die velocity.toml aus dem aktuellen Mitgliederstand und spielt sie ein. */
+async function rewriteProxyConfig(networkId: string): Promise<void> {
+  const network = await prisma.network.findUnique({
+    where: { id: networkId },
+    include: includeRelations(),
+  });
+  if (!network) return;
+  const backends = [...network.members]
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    .filter((m) => m.networkAlias)
+    .map((m) => ({ alias: m.networkAlias as string }));
+  const toml = renderVelocityToml({ motd: network.proxyServer.name, backends });
+  await putDataFiles(network.proxyServer.id, PROXY_DATA_DIR, [
+    { name: "velocity.toml", content: toml },
+  ]);
+  // Velocity hat keine zuverlässige Hot-Reload ohne Plugin → Proxy neu starten.
+  suppressDownAlert(network.proxyServer.id);
+  try {
+    await createDockerAdapter(network.proxyServer).restart();
+    reattachServerStreams(network.proxyServer.id);
+  } catch {
+    /* Proxy evtl. noch nicht gestartet — velocity.toml wird beim Start gelesen. */
+  }
+  void broadcastServerStatus(network.proxyServer.id);
+}
+
+// ── Container mit korrektem online-mode-Env neu aufsetzen ──────────────────────
+
+interface DockerCfg {
+  edition: string;
+  version: string;
+  memoryMb: number;
+  motd?: string;
+  onlineMode: boolean;
+}
+
+/** Liest die im Server hinterlegten Wizard-Parameter (dockerConfig-JSON). */
+function parseDockerCfg(server: Server): DockerCfg {
+  let c: Record<string, unknown> = {};
+  try {
+    c = server.dockerConfig ? (JSON.parse(server.dockerConfig) as Record<string, unknown>) : {};
+  } catch {
+    /* ungültiges JSON → Defaults. */
+  }
+  return {
+    edition: (c.edition as string) ?? server.edition,
+    version: (c.version as string) ?? "LATEST",
+    memoryMb: (c.memoryMb as number) ?? 2048,
+    motd: c.motd as string | undefined,
+    onlineMode: (c.onlineMode as boolean) ?? true,
+  };
+}
+
+/**
+ * Setzt einen Docker-Server neu auf (Container zerstören, Volume behalten) mit
+ * gewünschtem online-mode und optionaler Netzwerk-Zugehörigkeit. Nötig, weil
+ * itzg online-mode bei jedem Start aus dem Env schreibt — ein reines Ändern von
+ * server.properties würde beim nächsten Neustart überschrieben.
+ */
+async function reprovisionServer(
+  server: Server,
+  opts: { onlineMode: boolean; networkName?: string; networkAlias?: string },
+): Promise<void> {
+  const cfg = parseDockerCfg(server);
+  const rconPassword = server.rconPasswordEnc
+    ? decryptSecret(server.rconPasswordEnc)
+    : randomBytes(16).toString("hex");
+  const rconHostPort = server.rconPort ?? server.port + 10000;
+  detachServerStreams(server.id);
+  await destroyDockerServer(server, true); // Welt & Configs im Volume behalten
+  await provisionDockerServer(server, {
+    edition: cfg.edition,
+    version: cfg.version,
+    memoryMb: cfg.memoryMb,
+    mcPort: server.port,
+    rconHostPort,
+    rconPassword,
+    motd: cfg.motd,
+    onlineMode: opts.onlineMode,
+    networkName: opts.networkName,
+    networkAlias: opts.networkAlias,
+  });
+}
+
+// ── Paper-Velocity-Forwarding (paper-global.yml) ───────────────────────────────
+
+/**
+ * Aktiviert/deaktiviert den Velocity-Block in paper-global.yml und startet neu.
+ * `waitForConfig` pollt auf die (erst nach dem ersten Boot erzeugte) Datei.
+ * online-mode wird nicht hier, sondern über das Container-Env gesteuert
+ * (siehe reprovisionServer).
+ */
+async function configurePaperVelocity(
+  server: Server,
+  secret: string,
+  enabled: boolean,
+  waitForConfig: boolean,
+): Promise<void> {
+  let raw = await readDataTextFile(server.id, PAPER_GLOBAL_PATH);
+  if (!raw && waitForConfig) {
+    pushConsoleLine(server.id, "» Warte auf Paper-Konfiguration …");
+    for (let i = 0; i < 40 && !raw; i++) {
+      await sleep(3000);
+      raw = await readDataTextFile(server.id, PAPER_GLOBAL_PATH);
+    }
+  }
+  if (!raw) {
+    pushConsoleLine(
+      server.id,
+      "! paper-global.yml nicht gefunden — Velocity-Forwarding nicht gesetzt.",
+    );
+    return;
+  }
+  const { content, patched } = patchPaperVelocity(raw, secret, enabled);
+  if (patched) {
+    await putDataFiles(server.id, "/data/config", [
+      { name: "paper-global.yml", content },
+    ]);
+  } else {
+    pushConsoleLine(server.id, "! Velocity-Block in paper-global.yml nicht gefunden.");
+  }
+
+  suppressDownAlert(server.id);
+  try {
+    await createDockerAdapter(server).restart();
+    reattachServerStreams(server.id);
+    pushConsoleLine(
+      server.id,
+      enabled
+        ? "» Velocity-Forwarding aktiviert, Subserver neu gestartet."
+        : "» Velocity-Forwarding deaktiviert, Subserver neu gestartet.",
+    );
+  } catch {
+    /* Best effort. */
+  }
+  void broadcastServerStatus(server.id);
+}
+
+// ── Netzwerk erstellen ─────────────────────────────────────────────────────────
+
+export interface CreateNetworkInput {
+  name: string;
+  proxyName: string;
+  version: string;
+  memoryMb: number;
+  port: number;
+}
+
+export async function createNetwork(
+  input: CreateNetworkInput,
+): Promise<{ networkId: string; proxyServerId: string }> {
+  await assertPortFree(input.port);
+
+  const secret = randomBytes(24).toString("hex");
+
+  // Proxy-Server-Datensatz (kein RCON, Host 127.0.0.1, Port = Netzwerk-Port).
+  const proxyServer = await prisma.server.create({
+    data: {
+      name: input.proxyName,
+      type: "DOCKER",
+      edition: "VELOCITY",
+      host: "127.0.0.1",
+      port: input.port,
+      dockerConfig: JSON.stringify({
+        edition: "VELOCITY",
+        version: input.version,
+        memoryMb: input.memoryMb,
+        isProxy: true,
+      }),
+    },
+  });
+
+  const network = await prisma.network.create({
+    data: {
+      name: input.name,
+      proxyServerId: proxyServer.id,
+      forwardingSecretEnc: encryptSecret(secret),
+      dockerNetworkName: "", // gleich mit ID befüllt
+    },
+  });
+  const dockerNet = networkName(network.id);
+  await prisma.network.update({
+    where: { id: network.id },
+    data: { dockerNetworkName: dockerNet },
+  });
+
+  await ensureDockerNetwork(dockerNet);
+
+  const velocityToml = renderVelocityToml({
+    motd: input.proxyName,
+    backends: [],
+  });
+  void provisionProxyServer(proxyServer, {
+    version: input.version,
+    memoryMb: input.memoryMb,
+    mcPort: input.port,
+    networkName: dockerNet,
+    velocityToml,
+    forwardingSecret: secret,
+  }).catch((err) => {
+    pushConsoleLine(proxyServer.id, `Proxy-Provisionierung fehlgeschlagen: ${err}`);
+  });
+
+  return { networkId: network.id, proxyServerId: proxyServer.id };
+}
+
+// ── Subserver anhängen (bestehend) ─────────────────────────────────────────────
+
+async function loadNetwork(networkId: string): Promise<NetworkWithRelations> {
+  const network = await prisma.network.findUnique({
+    where: { id: networkId },
+    include: includeRelations(),
+  });
+  if (!network) {
+    throw new NetworkError(404, "not_found", "Netzwerk nicht gefunden");
+  }
+  return network;
+}
+
+function assertAliasFree(network: NetworkWithRelations, alias: string): void {
+  if (network.members.some((m) => m.networkAlias === alias)) {
+    throw new NetworkError(409, "alias_in_use", `Alias „${alias}" ist belegt`);
+  }
+}
+
+export async function attachSubserver(
+  networkId: string,
+  serverId: string,
+  alias: string,
+): Promise<void> {
+  const network = await loadNetwork(networkId);
+  assertAliasFree(network, alias);
+
+  const server = await prisma.server.findUnique({ where: { id: serverId } });
+  if (!server) throw new NetworkError(404, "not_found", "Server nicht gefunden");
+  if (server.type !== "DOCKER") {
+    throw new NetworkError(422, "unsupported", "Nur Docker-Server möglich");
+  }
+  if (server.networkId || server.id === network.proxyServerId) {
+    throw new NetworkError(409, "already_member", "Server ist bereits in einem Netzwerk");
+  }
+  if (!["PAPER", "SPIGOT"].includes(server.edition)) {
+    throw new NetworkError(422, "unsupported", "Nur Paper/Spigot als Subserver");
+  }
+
+  // paper-global.yml muss existieren (Server muss einmal gestartet worden sein).
+  const raw = await readDataTextFile(server.id, PAPER_GLOBAL_PATH);
+  if (!raw) {
+    throw new NetworkError(
+      409,
+      "not_initialized",
+      "Subserver muss einmal gestartet worden sein (paper-global.yml fehlt)",
+    );
+  }
+
+  await prisma.server.update({
+    where: { id: server.id },
+    data: { networkId: network.id, networkAlias: alias },
+  });
+
+  const secret = decryptSecret(network.forwardingSecretEnc);
+  // Neu aufsetzen (online-mode aus, im Netzwerk) → Paper-Forwarding an → Proxy.
+  void reprovisionServer(server, {
+    onlineMode: false,
+    networkName: network.dockerNetworkName,
+    networkAlias: alias,
+  })
+    .then(() => configurePaperVelocity(server, secret, true, true))
+    .then(() => rewriteProxyConfig(network.id))
+    .catch((err) => {
+      pushConsoleLine(server.id, `Anhängen fehlgeschlagen: ${err}`);
+    });
+
+  // Alias sofort im Proxy registrieren (Backend wird gleich erreichbar).
+  await rewriteProxyConfig(network.id);
+}
+
+// ── Subserver neu erstellen ────────────────────────────────────────────────────
+
+export interface CreateSubserverInput {
+  alias: string;
+  name: string;
+  edition: string;
+  version: string;
+  memoryMb: number;
+  port: number;
+  motd?: string;
+}
+
+export async function createSubserver(
+  networkId: string,
+  input: CreateSubserverInput,
+): Promise<{ serverId: string }> {
+  const network = await loadNetwork(networkId);
+  assertAliasFree(network, input.alias);
+
+  const rconHostPort = input.port + 10000;
+  await assertPortFree(input.port, rconHostPort);
+
+  const rconPassword = randomBytes(16).toString("hex");
+  const server = await prisma.server.create({
+    data: {
+      name: input.name,
+      type: "DOCKER",
+      edition: input.edition,
+      host: "127.0.0.1",
+      port: input.port,
+      rconPort: rconHostPort,
+      rconPasswordEnc: encryptSecret(rconPassword),
+      networkId: network.id,
+      networkAlias: input.alias,
+      dockerConfig: JSON.stringify({
+        edition: input.edition,
+        version: input.version,
+        memoryMb: input.memoryMb,
+        motd: input.motd,
+        onlineMode: false,
+      }),
+    },
+  });
+
+  const secret = decryptSecret(network.forwardingSecretEnc);
+  // Provisionieren (im Netzwerk, online-mode aus) → dann Paper-Forwarding setzen.
+  void provisionDockerServer(server, {
+    edition: input.edition,
+    version: input.version,
+    memoryMb: input.memoryMb,
+    mcPort: input.port,
+    rconHostPort,
+    rconPassword,
+    motd: input.motd,
+    onlineMode: false,
+    networkName: network.dockerNetworkName,
+    networkAlias: input.alias,
+  })
+    .then(() => configurePaperVelocity(server, secret, true, true))
+    .then(() => rewriteProxyConfig(network.id))
+    .catch((err) => {
+      pushConsoleLine(server.id, `Subserver-Einrichtung fehlgeschlagen: ${err}`);
+    });
+
+  // velocity.toml sofort aktualisieren, damit der Alias registriert ist.
+  await rewriteProxyConfig(network.id);
+  return { serverId: server.id };
+}
+
+// ── Subserver lösen ─────────────────────────────────────────────────────────────
+
+export async function detachSubserver(
+  networkId: string,
+  serverId: string,
+): Promise<void> {
+  const network = await loadNetwork(networkId);
+  const server = network.members.find((m) => m.id === serverId);
+  if (!server) {
+    throw new NetworkError(404, "not_found", "Subserver nicht im Netzwerk");
+  }
+
+  await prisma.server.update({
+    where: { id: server.id },
+    data: { networkId: null, networkAlias: null },
+  });
+  await rewriteProxyConfig(network.id);
+
+  // Auf Standalone zurücksetzen: neu aufsetzen ohne Netzwerk, online-mode wie
+  // ursprünglich, Velocity-Block in Paper deaktivieren.
+  const secret = decryptSecret(network.forwardingSecretEnc);
+  const cfg = parseDockerCfg(server);
+  void reprovisionServer(server, { onlineMode: cfg.onlineMode })
+    .then(() => configurePaperVelocity(server, secret, false, true))
+    .catch((err) => {
+      pushConsoleLine(server.id, `Zurücksetzen fehlgeschlagen: ${err}`);
+    });
+}
+
+// ── Netzwerk löschen ────────────────────────────────────────────────────────────
+
+export async function deleteNetwork(networkId: string): Promise<void> {
+  const network = await loadNetwork(networkId);
+  const secret = decryptSecret(network.forwardingSecretEnc);
+  const members = network.members;
+  const dockerNet = network.dockerNetworkName;
+
+  // Proxy sofort entfernen; Cascade über proxyServer löscht die Network-Zeile.
+  detachServerStreams(network.proxyServer.id);
+  await destroyDockerServer(network.proxyServer, false);
+  await prisma.server.delete({ where: { id: network.proxyServer.id } });
+
+  // Subserver im Hintergrund auf Standalone zurücksetzen, dann Docker-Netz entfernen.
+  void (async () => {
+    for (const member of members) {
+      await prisma.server
+        .update({
+          where: { id: member.id },
+          data: { networkId: null, networkAlias: null },
+        })
+        .catch(() => {});
+      const cfg = parseDockerCfg(member);
+      await reprovisionServer(member, { onlineMode: cfg.onlineMode }).catch(() => {});
+      await configurePaperVelocity(member, secret, false, true).catch(() => {});
+    }
+    await removeDockerNetwork(dockerNet);
+  })().catch(() => {});
+}

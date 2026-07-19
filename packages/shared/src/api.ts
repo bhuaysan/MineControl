@@ -2,6 +2,7 @@ import type { Role } from "./roles.js";
 import type {
   Capability,
   ServerEdition,
+  ServerState,
   ServerStatus,
   ServerType,
 } from "./server.js";
@@ -398,6 +399,77 @@ export interface AuditEntryDto {
   details?: Record<string, unknown>;
   timestamp: string;
 }
+
+// ── Phase 4: Velocity-Netzwerk ───────────────────────────────────────────────
+
+/** Editionen, die als Subserver hinter einem Velocity-Proxy laufen können. */
+export const NETWORK_SUBSERVER_EDITIONS = ["PAPER", "SPIGOT"] as const;
+export type NetworkSubserverEdition = (typeof NETWORK_SUBSERVER_EDITIONS)[number];
+
+/**
+ * Alias-Regeln für Subserver: Velocity-[servers]-Schlüssel und zugleich DNS-Name
+ * im Docker-Netzwerk. Muss ein gültiger Hostname sein → keine Unterstriche
+ * (Velocity 4 lehnt sie ab), nur Kleinbuchstaben/Ziffern/Bindestrich.
+ */
+export const NETWORK_ALIAS_REGEX = /^[a-z][a-z0-9-]{0,31}$/;
+
+/** Ein Subserver eines Netzwerks (verweist auf einen vollständigen Server). */
+export interface NetworkMemberDto {
+  serverId: string;
+  alias: string;
+  name: string;
+  edition: ServerEdition;
+  state: ServerState;
+}
+
+/** Ein Velocity-Netzwerk: Proxy + zugeordnete Subserver. */
+export interface NetworkDto {
+  id: string;
+  name: string;
+  proxy: {
+    serverId: string;
+    name: string;
+    edition: ServerEdition;
+    host: string;
+    port: number;
+    state: ServerState;
+  };
+  members: NetworkMemberDto[];
+  createdAt: string;
+}
+
+/** Netzwerk anlegen — provisioniert einen Velocity-Proxy als Docker-Server. */
+export interface CreateNetworkRequest {
+  name: string;
+  /** Anzeigename des Proxy-Servers. */
+  proxyName: string;
+  /** Velocity-Version oder „LATEST". */
+  version?: string;
+  memoryMb: number;
+  /** Host-Port, unter dem das Netzwerk (der Proxy) erreichbar ist. */
+  port: number;
+}
+
+/** Bestehenden Docker-Server als Subserver an ein Netzwerk anhängen. */
+export interface AttachSubserverRequest {
+  mode: "attach";
+  serverId: string;
+  alias: string;
+}
+
+/** Neuen Subserver direkt ins Netzwerk provisionieren. */
+export interface CreateSubserverRequest {
+  mode: "create";
+  alias: string;
+  name: string;
+  edition: NetworkSubserverEdition;
+  version?: string;
+  memoryMb: number;
+  port: number;
+  motd?: string;
+}
+
+export type AddSubserverRequest = AttachSubserverRequest | CreateSubserverRequest;
 
 /** Generische Fehlerantwort der API. */
 export interface ApiError {
