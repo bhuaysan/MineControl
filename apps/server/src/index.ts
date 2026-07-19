@@ -9,6 +9,7 @@ import { authRoutes } from "./modules/auth/routes.js";
 import { auditRoutes } from "./modules/audit/routes.js";
 import { backupRoutes } from "./modules/backups/routes.js";
 import { fileRoutes } from "./modules/files/routes.js";
+import { luckPermsRoutes } from "./modules/luckperms/routes.js";
 import { metricRoutes } from "./modules/metrics/routes.js";
 import { startMetricSampler } from "./modules/metrics/service.js";
 import { modRoutes } from "./modules/mods/routes.js";
@@ -48,6 +49,7 @@ async function main(): Promise<void> {
   await app.register(auditRoutes);
   await app.register(backupRoutes);
   await app.register(fileRoutes);
+  await app.register(luckPermsRoutes);
   await app.register(taskRoutes);
   await app.register(metricRoutes);
   await app.register(modRoutes);

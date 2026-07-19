@@ -165,7 +165,7 @@ ScheduledTask id, serverId, cron, action (RESTART|COMMAND|BACKUP), payload
 - [x] Plugin-/Mod-Verwaltung: Suche & Install via **Modrinth-API** (offene API, gut dokumentiert)
 - [x] Modpack-Support im Wizard (Modrinth-Packs via itzg-Image; CurseForge offen)
 - [x] Velocity-Netzwerk: Proxy + Subserver (Paper/Spigot) als Gruppe verwalten (Modern-Forwarding, eigenes Docker-Netz; BungeeCord/modded Subserver offen)
-- [ ] LuckPerms-Integration für feingranulare In-Game-Berechtigungen
+- [x] LuckPerms-Integration für feingranulare In-Game-Berechtigungen (Gruppen, Prefix/Suffix/Weight, Berechtigungen, Spieler; Auto-Install via Modrinth)
 - [ ] MineControl-Agent für externe Server (Start/Stop, Logs, Dateien)
 - [x] Welt-Verwaltung: Download, mehrere Welten (auflisten/wechseln/erstellen/löschen), Upload (.tar.gz), Pregen via Chunky
 - [x] 2FA (TOTP) + API-Tokens für Automatisierung

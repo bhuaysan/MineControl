@@ -518,6 +518,84 @@ export interface PregenResponse {
   output?: string;
 }
 
+// ── Phase 4: LuckPerms (Berechtigungen, nur Docker) ───────────────────────────
+
+/** Regeln für LuckPerms-Gruppennamen (LuckPerms führt sie klein). */
+export const LP_GROUP_NAME_REGEX = /^[a-z0-9_-]{1,36}$/;
+/** Erlaubte Zeichen für einen Berechtigungs-Node (keine Leer-/Steuerzeichen). */
+export const LP_NODE_REGEX = /^[A-Za-z0-9_.*:\-/#]{1,128}$/;
+
+/** Status der LuckPerms-Integration für einen Server. */
+export interface LuckPermsStatusDto {
+  /** Edition unterstützt LuckPerms (Paper/Spigot/Fabric/Forge/NeoForge). */
+  supported: boolean;
+  /** LuckPerms-JAR liegt im plugins-/mods-Ordner. */
+  installed: boolean;
+  /** `lp`-Befehle antworten (Server läuft + Plugin geladen). */
+  available: boolean;
+}
+
+export interface LuckPermsInstallResponse {
+  installed: boolean;
+  message: string;
+}
+
+/** Ein Berechtigungs-Node (für Gruppe oder Spieler). */
+export interface LpNodeDto {
+  key: string;
+  value: boolean;
+  /** Kontext-Zusammenfassung, falls nicht global (z. B. „server=survival"). */
+  context?: string;
+  /** Ablauf, falls temporär. */
+  expiry?: string;
+}
+
+/** Kurzform einer Gruppe in der Übersicht. */
+export interface LpGroupSummaryDto {
+  name: string;
+  weight?: number;
+}
+
+/** Detailansicht einer Gruppe. */
+export interface LpGroupDetailDto {
+  name: string;
+  weight?: number;
+  prefix?: string;
+  suffix?: string;
+  permissions: LpNodeDto[];
+}
+
+/** Detailansicht eines Spielers in LuckPerms. */
+export interface LpUserDto {
+  name: string;
+  uuid?: string;
+  primaryGroup?: string;
+  /** Übergeordnete Gruppen (parents). */
+  groups: string[];
+  permissions: LpNodeDto[];
+}
+
+export interface LpCreateGroupRequest {
+  name: string;
+}
+
+/** Setzt einen Node (value) — Weglassen von value + DELETE entfernt ihn. */
+export interface LpSetPermissionRequest {
+  node: string;
+  value: boolean;
+}
+
+/** Setzt Meta-Werte einer Gruppe (nur gesetzte Felder werden angewandt). */
+export interface LpSetMetaRequest {
+  prefix?: string;
+  suffix?: string;
+  weight?: number;
+}
+
+export interface LpUserGroupRequest {
+  group: string;
+}
+
 /** Generische Fehlerantwort der API. */
 export interface ApiError {
   error: string;

@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthContext.js";
 import { BackupsPanel } from "../components/BackupsPanel.js";
 import { ConsoleView } from "../components/ConsoleView.js";
 import { FilesPanel } from "../components/FilesPanel.js";
+import { LuckPermsPanel } from "../components/LuckPermsPanel.js";
 import { MetricHistoryChart } from "../components/MetricHistoryChart.js";
 import { ModsPanel } from "../components/ModsPanel.js";
 import { PlayerActionMenu } from "../components/PlayerActions.js";
@@ -26,6 +27,7 @@ type Tab =
   | "players"
   | "files"
   | "mods"
+  | "luckperms"
   | "worlds"
   | "backups"
   | "tasks"
@@ -134,6 +136,11 @@ export function ServerDetailPage() {
     !["VELOCITY", "BUNGEECORD"].includes(server.edition) &&
     can("MODERATOR");
   if (isWorldServer) tabs.push(["worlds", "Welten"]);
+  const isLuckPerms =
+    isDocker &&
+    ["PAPER", "SPIGOT", "FABRIC", "FORGE", "NEOFORGE"].includes(server.edition) &&
+    can("MODERATOR");
+  if (isLuckPerms) tabs.push(["luckperms", "Rechte"]);
   if (isDocker) tabs.push(["backups", "Backups"]);
   if (showTasks) tabs.push(["tasks", "Zeitpläne"]);
   if (hasSettings) tabs.push(["settings", "Einstellungen"]);
@@ -288,6 +295,8 @@ export function ServerDetailPage() {
       )}
 
       {tab === "worlds" && isWorldServer && <WorldsPanel serverId={server.id} />}
+
+      {tab === "luckperms" && isLuckPerms && <LuckPermsPanel serverId={server.id} />}
 
       {tab === "backups" && isDocker && <BackupsPanel serverId={server.id} />}
 

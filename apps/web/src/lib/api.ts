@@ -15,6 +15,12 @@ import type {
   LoginRequest,
   MeResponse,
   InstalledModDto,
+  LpGroupDetailDto,
+  LpGroupSummaryDto,
+  LpSetMetaRequest,
+  LpUserDto,
+  LuckPermsInstallResponse,
+  LuckPermsStatusDto,
   MetricSampleDto,
   ModSearchHitDto,
   AddSubserverRequest,
@@ -284,6 +290,69 @@ export const api = {
   deleteMod: (id: string, file: string) =>
     request<{ ok: true }>(
       `/api/servers/${id}/mods?file=${encodeURIComponent(file)}`,
+      { method: "DELETE" },
+    ),
+
+  // LuckPerms (Berechtigungen)
+  lpStatus: (id: string) =>
+    request<LuckPermsStatusDto>(`/api/servers/${id}/luckperms`),
+  lpInstall: (id: string) =>
+    request<LuckPermsInstallResponse>(`/api/servers/${id}/luckperms/install`, {
+      method: "POST",
+    }),
+  lpListGroups: (id: string) =>
+    request<LpGroupSummaryDto[]>(`/api/servers/${id}/luckperms/groups`),
+  lpCreateGroup: (id: string, name: string) =>
+    request<{ ok: true }>(`/api/servers/${id}/luckperms/groups`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  lpDeleteGroup: (id: string, name: string) =>
+    request<{ ok: true }>(
+      `/api/servers/${id}/luckperms/groups/${encodeURIComponent(name)}`,
+      { method: "DELETE" },
+    ),
+  lpGetGroup: (id: string, name: string) =>
+    request<LpGroupDetailDto>(
+      `/api/servers/${id}/luckperms/groups/${encodeURIComponent(name)}`,
+    ),
+  lpSetGroupPermission: (id: string, name: string, node: string, value: boolean) =>
+    request<{ ok: true }>(
+      `/api/servers/${id}/luckperms/groups/${encodeURIComponent(name)}/permission`,
+      { method: "POST", body: JSON.stringify({ node, value }) },
+    ),
+  lpUnsetGroupPermission: (id: string, name: string, node: string) =>
+    request<{ ok: true }>(
+      `/api/servers/${id}/luckperms/groups/${encodeURIComponent(name)}/permission?node=${encodeURIComponent(node)}`,
+      { method: "DELETE" },
+    ),
+  lpSetGroupMeta: (id: string, name: string, body: LpSetMetaRequest) =>
+    request<{ ok: true }>(
+      `/api/servers/${id}/luckperms/groups/${encodeURIComponent(name)}/meta`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  lpGetUser: (id: string, name: string) =>
+    request<LpUserDto>(
+      `/api/servers/${id}/luckperms/users/${encodeURIComponent(name)}`,
+    ),
+  lpAddUserGroup: (id: string, name: string, group: string) =>
+    request<{ ok: true }>(
+      `/api/servers/${id}/luckperms/users/${encodeURIComponent(name)}/groups`,
+      { method: "POST", body: JSON.stringify({ group }) },
+    ),
+  lpRemoveUserGroup: (id: string, name: string, group: string) =>
+    request<{ ok: true }>(
+      `/api/servers/${id}/luckperms/users/${encodeURIComponent(name)}/groups/${encodeURIComponent(group)}`,
+      { method: "DELETE" },
+    ),
+  lpSetUserPermission: (id: string, name: string, node: string, value: boolean) =>
+    request<{ ok: true }>(
+      `/api/servers/${id}/luckperms/users/${encodeURIComponent(name)}/permission`,
+      { method: "POST", body: JSON.stringify({ node, value }) },
+    ),
+  lpUnsetUserPermission: (id: string, name: string, node: string) =>
+    request<{ ok: true }>(
+      `/api/servers/${id}/luckperms/users/${encodeURIComponent(name)}/permission?node=${encodeURIComponent(node)}`,
       { method: "DELETE" },
     ),
 
