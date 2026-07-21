@@ -1,8 +1,14 @@
+import { PassThrough } from "node:stream";
 import { posix } from "node:path";
 import type { Server } from "@prisma/client";
 import * as tar from "tar-stream";
 import type { FileEntryDto, FileEntryType } from "@minecontrol/shared";
-import { containerName, docker } from "../../adapters/dockerClient.js";
+import {
+  MC_IMAGE,
+  containerName,
+  dataVolumeName,
+  docker,
+} from "../../adapters/dockerClient.js";
 import { createDockerAdapter } from "../../adapters/registry.js";
 
 /** Basisverzeichnis im Container, unter dem alle Dateioperationen laufen. */
@@ -29,6 +35,78 @@ export function resolveDataPath(rel: string): string {
     throw new Error("Ungültiger Pfad");
   }
   return clean;
+}
+
+/**
+ * Ermittelt den kanonischen Pfad (folgt allen Symlinks). Existiert das Ziel
+ * nicht, wird der (existierende) Elternpfad aufgelöst — nötig fürs Anlegen
+ * neuer Dateien/Ordner. `$1` wird als Positionsargument übergeben, nie in den
+ * Skripttext interpoliert → keine Shell-Injection.
+ */
+const REALPATH_SCRIPT =
+  'p="$1"; r="$(readlink -f -- "$p" 2>/dev/null)"; ' +
+  '[ -n "$r" ] || r="$(readlink -f -- "$(dirname -- "$p")" 2>/dev/null)"; ' +
+  "printf %s \"$r\"";
+
+/**
+ * Kanonischer Pfad von `abs` im Container. Bei laufendem Container per `exec`
+ * (schnell); ist er gestoppt und `fallback` gesetzt, via kurzlebigem
+ * Wegwerf-Container mit read-only gemountetem Datenvolume (bestehendes Image,
+ * kein Netzwerk, Auto-Remove). Ohne `fallback` wird der Stopp durchgereicht.
+ */
+async function canonicalize(
+  server: Server,
+  abs: string,
+  fallback: boolean,
+): Promise<string> {
+  try {
+    const out = await createDockerAdapter(server).exec([
+      "sh",
+      "-c",
+      REALPATH_SCRIPT,
+      "sh",
+      abs,
+    ]);
+    return out.trim();
+  } catch (err) {
+    if (!/not running|is not running/i.test((err as Error).message)) throw err;
+    if (!fallback) throw new ContainerNotRunningError();
+  }
+  return (await resolveViaOneShot(server.id, abs)).trim();
+}
+
+/** Löst `abs` in einem Wegwerf-Container gegen das Datenvolume auf. */
+async function resolveViaOneShot(serverId: string, abs: string): Promise<string> {
+  const out = new PassThrough();
+  const chunks: Buffer[] = [];
+  out.on("data", (c: Buffer) => chunks.push(c));
+  await docker.run(MC_IMAGE, [abs], out, {
+    Tty: true, // TTY → unmultiplexter stdout direkt in `out`.
+    Entrypoint: ["sh", "-c", REALPATH_SCRIPT, "sh"],
+    HostConfig: {
+      Binds: [`${dataVolumeName(serverId)}:${ROOT}:ro`],
+      AutoRemove: true,
+      NetworkMode: "none",
+    },
+  });
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/**
+ * Härtung gegen Symlinks: stellt sicher, dass `abs` auch nach Auflösung aller
+ * Symlinks unter `/data` bleibt. `resolveDataPath` prüft nur lexikalisch; ein
+ * Symlink in `/data` (etwa vom laufenden Server angelegt) könnte sonst beim
+ * Lesen/Schreiben/Listen/Löschen aus dem Datenverzeichnis herausführen.
+ */
+async function assertInsideData(
+  server: Server,
+  abs: string,
+  fallback: boolean,
+): Promise<void> {
+  const real = await canonicalize(server, abs, fallback);
+  if (real !== ROOT && !real.startsWith(`${ROOT}/`)) {
+    throw new Error("Ungültiger Pfad (Symlink führt aus dem Datenverzeichnis)");
+  }
 }
 
 /** Relativer Pfad (führender „/") für die Anzeige im Frontend. */
@@ -64,6 +142,7 @@ export async function listDirectory(
 ): Promise<{ path: string; entries: FileEntryDto[] }> {
   ensureDocker(server);
   const dir = resolveDataPath(rel);
+  await assertInsideData(server, dir, false);
   const adapter = createDockerAdapter(server);
 
   let raw: string;
@@ -116,6 +195,7 @@ export async function readFile(server: Server, rel: string): Promise<Buffer> {
   ensureDocker(server);
   const file = resolveDataPath(rel);
   if (file === ROOT) throw new Error("Kein Dateipfad");
+  await assertInsideData(server, file, true);
   const container = docker.getContainer(containerName(server.id));
   const archive = (await container.getArchive({
     path: file,
@@ -132,6 +212,7 @@ export async function writeFile(
   ensureDocker(server);
   const file = resolveDataPath(rel);
   if (file === ROOT) throw new Error("Kein Dateipfad");
+  await assertInsideData(server, file, true);
   const container = docker.getContainer(containerName(server.id));
   const pack = tar.pack();
   pack.entry({ name: posix.basename(file) }, data);
@@ -144,6 +225,7 @@ export async function makeDirectory(server: Server, rel: string): Promise<void> 
   ensureDocker(server);
   const dir = resolveDataPath(rel);
   if (dir === ROOT) throw new Error("Ungültiger Pfad");
+  await assertInsideData(server, dir, true);
   const container = docker.getContainer(containerName(server.id));
   const pack = tar.pack();
   pack.entry({ name: posix.basename(dir), type: "directory" }, "");
@@ -156,6 +238,7 @@ export async function deletePath(server: Server, rel: string): Promise<void> {
   ensureDocker(server);
   const target = resolveDataPath(rel);
   if (target === ROOT) throw new Error("Datenverzeichnis kann nicht gelöscht werden");
+  await assertInsideData(server, target, false);
   try {
     await createDockerAdapter(server).exec(["rm", "-rf", target]);
   } catch (err) {
