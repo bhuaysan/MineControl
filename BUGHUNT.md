@@ -5,69 +5,51 @@ nacheinander in einer langen Session) — jeder Prompt ist in sich
 abgeschlossen und braucht keinen Bezug zu den anderen. Das hält den Kontext
 pro Session klein und spart Tokens.
 
-Punkt 7 zuerst behandeln — betrifft den zuletzt (von Sonnet) geschriebenen,
-noch ungeprüften Code.
+Punkt 5 (E-Mail) zuerst behandeln — betrifft den zuletzt (von Sonnet)
+geschriebenen, noch ungeprüften Code.
+
+> **Update:** Eine vorherige Opus-4.8-Session hat die ursprünglichen Punkte
+> 1–4 (Pfad-Traversal/Symlinks, Welt-Upload/Löschschutz, Netzwerk-Races,
+> WS-Ref-Counting-Leak) bereits behoben — siehe Commits `55c90ea`, `d17ff00`,
+> `b064e87`, `93ea0ea` und die neue "Bekannte Einschränkungen" in
+> PLANNING.md §11. Nicht erneut darauf ansetzen, siehe stattdessen Punkt 1
+> unten (verbleibender Rest von RCON-Fehlerbehandlung) und Punkt 2 (bewusst
+> zurückgestellte Lücke aus §11, falls Ben Mehrbenutzer-/API-Betrieb plant).
 
 ---
 
-## 1. Datei-Manager: Pfad-Traversal-Schutz
-
-```
-Prüfe apps/server/src/modules/files/service.ts (Funktion resolveDataPath) und
-apps/server/src/modules/files/routes.ts auf Path-Traversal-Lücken. Bereits
-bekannter Bug (behoben): posix.join("/data","/") ergab "/data/" mit Trailing-
-Slash und umging den Löschschutz. Prüfe systematisch alle Stellen, die
-Nutzer-Pfade entgegennehmen (Listing, Lesen, Schreiben, Upload, mkdir,
-Löschen) mit Eingaben wie "..", "../..", "//", ".", URL-encoded Varianten,
-NUL-Bytes, sehr langen Pfaden und Symlinks. Sind alle Endpunkte gleich robust
-wie der Löschschutz, oder gibt es einen Endpunkt, der resolveDataPath nicht
-oder anders nutzt?
-```
-
-## 2. Welt-Verwaltung: Löschschutz & Upload-Extraktion
-
-```
-Prüfe apps/server/src/modules/world/service.ts und routes.ts. Zwei
-Risikobereiche: (1) Der Schutz der aktiven Welt vor dem Löschen — prüfe ob
-Nether/End-Companion-Erkennung und der Active-World-Vergleich robust gegen
-Groß-/Kleinschreibung, Sonderzeichen im level-name oder Race Conditions
-(Welt wechseln während Löschvorgang läuft) sind. (2) Der .tar.gz-Upload-Pfad
-(Entpacken, obersten Ordner umbenennen, uid/gid 1000 setzen) — kann ein
-präparierter Tarball mit ".." in Dateinamen oder absoluten Pfaden aus dem
-Zielverzeichnis ausbrechen (tar-slip)? Kann ein Upload während eines
-laufenden Pregen-Vorgangs (Chunky) zu Inkonsistenzen führen?
-```
-
-## 3. Netzwerk-Provisionierung: Race Conditions & Secret-Handling
-
-```
-Prüfe apps/server/src/modules/networks/service.ts (641 Zeilen, größte Datei
-im Projekt) zusammen mit velocity.ts, bungee.ts, moddedForwarding.ts. Fokus:
-reprovisionServer() und configureBackendForwarding() — was passiert, wenn
-zwei Anfragen gleichzeitig denselben Server an-/abhängen (kein Locking
-sichtbar)? Wird das Forwarding-Secret bei jedem Reprovisioning neu generiert
-oder wiederverwendet — und falls neu generiert, laufen alte Subserver mit
-veralteten Secrets weiter, ohne dass es auffällt? Prüfe außerdem, ob der
-BungeeCord-Platzhalter-Server (nötig gegen "No servers defined") beim
-letzten Detach korrekt wieder eingesetzt wird, statt eine leere servers-Liste
-zu erzeugen.
-```
-
-## 4. RCON-Verbindungsmanagement & WS-Ref-Counting
+## 1. RCON-Fehlerbehandlung: verbleibende Lücken
 
 ```
 Prüfe apps/server/src/adapters/external.ts (openPersistentRcon,
-connectRcon) und apps/server/src/ws/index.ts (beginMetrics, Ref-Counting
-für Live-Streams). Bekannter Fix: fehlender error-Listener auf dem
-rcon-client-Socket crashte früher den ganzen Prozess. Prüfe, ob JEDE Stelle,
-die eine RCON-Verbindung öffnet (auch die ephemeren im 60s-Metrik-Sampler,
-metrics/service.ts), einen error-Handler hat. Prüfe im WS-Hub, ob das
-Ref-Counting beim Client-Disconnect (nicht nur beim expliziten Unsubscribe)
-zuverlässig dekrementiert wird — sonst bleibt eine RCON-Verbindung nach
-Browser-Tab-Schließen offen (Leak).
+connectRcon) sowie apps/server/src/modules/metrics/service.ts (60s-
+Metrik-Sampler, nutzt ephemere RCON-Verbindungen). Bekannter, bereits
+behobener Fix: fehlender error-Listener auf dem rcon-client-Socket crashte
+früher den ganzen Prozess (persistente Verbindung, ws/index.ts). Prüfe
+GEZIELT, ob auch die ephemeren Verbindungen im 60s-Sampler und an jeder
+anderen Stelle, die adapter.sendCommand()/eine neue Rcon-Instanz nutzt,
+denselben error-Handler VOR connect() angehängt haben — nicht nur die
+bereits abgesicherte persistente Variante.
 ```
 
-## 5. LuckPerms-Export: Nebenläufigkeit & Cleanup
+## 2. Netzwerk: bewusst zurückgestellte Lücke aus PLANNING.md §11
+
+```
+Lies PLANNING.md §11 "Bekannte Einschränkungen" — dokumentiert eine
+bewusst NICHT behobene Lücke: zwei verschiedene, widersprüchliche
+Netzwerk-Befehle auf demselben Server im selben Zeitfenster (z. B. Detach
+aus Netz A gleichzeitig mit Attach an Netz B) können zu einem DB/Container-
+Zustands-Mismatch führen, obwohl withResourceLock in
+apps/server/src/modules/networks/service.ts alle GLEICHARTIGEN Races
+(Doppelklick, doppeltes Detach) bereits abdeckt. Prüfe, ob dieser Mismatch-
+Fall im Rahmen von Ben's aktuellem Nutzungsmuster (Einzel-Admin, kein API-
+Automatisierungs-Betrieb) wirklich irrelevant ist, oder ob es einen
+einfachen, kleinen Fix gibt (z. B. eine Server-Level-Statusmaschine mit nur
+zwei Zuständen "idle"/"busy"), der die volle Lösung nicht braucht, aber die
+Lücke schon schließt.
+```
+
+## 3. LuckPerms-Export: Nebenläufigkeit & Cleanup
 
 ```
 Prüfe apps/server/src/modules/luckperms/service.ts. Bekannte Einschränkung:
@@ -82,7 +64,7 @@ erzeugen? (3) Wird der JSON-Parse-Fehlerfall (kaputtes/unvollständiges Export
 durch Server-Crash mitten im Export) behandelt oder crasht die Route?
 ```
 
-## 6. Auth, 2FA, API-Tokens: Timing & Replay
+## 4. Auth, 2FA, API-Tokens: Timing & Replay
 
 ```
 Prüfe apps/server/src/modules/twofa/totp.ts, apps/server/src/modules/auth/
@@ -96,7 +78,7 @@ Rollenänderung (nicht nur Löschen) — kann man den letzten Admin auf VIEWER
 downgraden?
 ```
 
-## 7. Neues Feature — E-Mail-Benachrichtigungen (Selbstprüfung der letzten Session)
+## 5. Neues Feature — E-Mail-Benachrichtigungen (Selbstprüfung der letzten Session)
 
 ```
 Review apps/server/src/modules/notifications/service.ts und routes.ts,
@@ -115,7 +97,7 @@ Speichern dann grundlos fehl? (4) Timeout: postToDiscord hat ein
 den Aufrufer (z. B. den Metrik-Sampler) blockieren?
 ```
 
-## 8. Docker-Adapter: Container-Lifecycle & Volume-Löschung
+## 6. Docker-Adapter: Container-Lifecycle & Volume-Löschung
 
 ```
 Prüfe apps/server/src/adapters/docker.ts und
