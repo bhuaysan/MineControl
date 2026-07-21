@@ -30,6 +30,19 @@ export const config = {
   webOrigin: optional("WEB_ORIGIN", "http://localhost:5173"),
   /** Verzeichnis für Server-Backups (tar.gz je Server). */
   backupDir: optional("BACKUP_DIR", "./backups"),
+  /**
+   * Verzeichnis mit server-seitig bereitgestellten Import-Archiven (.tar.gz).
+   * Admins legen hier Fremd-Server-Verzeichnisse ab, um sie beim Erstellen zu
+   * importieren (Migration großer Welten ohne Browser-Upload).
+   */
+  importDir: optional("IMPORT_DIR", "./imports"),
+  /** Ablage für per Browser hochgeladene Import-Archive (Staging). */
+  importStagingDir: optional("IMPORT_STAGING_DIR", "./imports/.staging"),
+  /**
+   * Obergrenze (Bytes) für Import-Uploads und entpackte Archivgröße
+   * (Schutz vor Gzip-/Tar-Bomben). Default 10 GiB.
+   */
+  importMaxBytes: Number(optional("IMPORT_MAX_MB", "10240")) * 1024 * 1024,
   sessionSecret,
   encryptionKey: Buffer.from(encryptionKeyHex, "hex"),
   /**

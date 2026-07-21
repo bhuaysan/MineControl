@@ -22,6 +22,9 @@ logs/
 # Server-Backups (Laufzeitdaten)
 backups/
 
+# Server-Import-Archive (Laufzeitdaten)
+imports/
+
 # Editor / OS
 .idea/
 .vscode/

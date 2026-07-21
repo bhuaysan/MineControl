@@ -9,11 +9,12 @@ import {
   GAMEMODES,
   SERVER_EDITIONS,
 } from "@minecontrol/shared";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { serversQueryKey } from "../hooks/useServers.js";
 import { api } from "../lib/api.js";
+import { formatBytes } from "../lib/format.js";
 
 const inputClass =
   "w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 outline-none focus:border-status-online";
@@ -98,9 +99,26 @@ function DockerForm() {
   const [modpack, setModpack] = useState("");
   const [cfModpack, setCfModpack] = useState("");
   const [eula, setEula] = useState(false);
+  const [importEnabled, setImportEnabled] = useState(false);
+  const [importMode, setImportMode] = useState<"upload" | "path">("upload");
+  const [stagingId, setStagingId] = useState<string | null>(null);
+  const [pathFilename, setPathFilename] = useState("");
   const usingModrinth = modpack.trim().length > 0;
   const usingCurseforge = cfModpack.trim().length > 0;
   const usingModpack = usingModrinth || usingCurseforge;
+
+  // Beim Import stammen Welt & Spielparameter aus dem Archiv — deshalb werden
+  // seed/difficulty/gamemode nicht mitgeschickt (itzg behält die importierte
+  // server.properties). Modpack + Import schließen sich aus.
+  // Import und Modpack schließen sich aus (Modpack setzt TYPE/VERSION selbst).
+  const importSource =
+    usingModpack || !importEnabled
+      ? undefined
+      : importMode === "upload" && stagingId
+        ? ({ source: "upload", stagingId } as const)
+        : importMode === "path" && pathFilename
+          ? ({ source: "path", filename: pathFilename } as const)
+          : undefined;
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -110,14 +128,15 @@ function DockerForm() {
         version: version.trim() || "LATEST",
         memoryMb,
         port,
-        difficulty,
-        gamemode,
-        seed: seed.trim() || undefined,
+        difficulty: importSource ? undefined : difficulty,
+        gamemode: importSource ? undefined : gamemode,
+        seed: importSource ? undefined : seed.trim() || undefined,
         motd: motd.trim() || undefined,
         onlineMode,
         eula: true,
         modrinthModpack: modpack.trim() || undefined,
         curseforgeModpack: cfModpack.trim() || undefined,
+        import: importSource,
       }),
     onSuccess: (server) => {
       void queryClient.invalidateQueries({ queryKey: serversQueryKey });
@@ -125,9 +144,11 @@ function DockerForm() {
     },
   });
 
+  const importIncomplete = importEnabled && !usingModpack && !importSource;
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (eula) createMutation.mutate();
+    if (eula && !importIncomplete) createMutation.mutate();
   };
 
   return (
@@ -221,7 +242,8 @@ function DockerForm() {
             onChange={(e) =>
               setDifficulty(e.target.value as (typeof DIFFICULTIES)[number])
             }
-            className={inputClass}
+            disabled={importEnabled}
+            className={`${inputClass} ${importEnabled ? "opacity-50" : ""}`}
           >
             {DIFFICULTIES.map((d) => (
               <option key={d} value={d}>
@@ -234,7 +256,8 @@ function DockerForm() {
           <select
             value={gamemode}
             onChange={(e) => setGamemode(e.target.value as (typeof GAMEMODES)[number])}
-            className={inputClass}
+            disabled={importEnabled}
+            className={`${inputClass} ${importEnabled ? "opacity-50" : ""}`}
           >
             {GAMEMODES.map((g) => (
               <option key={g} value={g}>
@@ -250,7 +273,8 @@ function DockerForm() {
           <input
             value={seed}
             onChange={(e) => setSeed(e.target.value)}
-            className={inputClass}
+            disabled={importEnabled}
+            className={`${inputClass} ${importEnabled ? "opacity-50" : ""}`}
             placeholder="leer = zufällig"
           />
         </Field>
@@ -274,6 +298,19 @@ function DockerForm() {
         Online-Modus (Mojang-Authentifizierung)
       </label>
 
+      {!usingModpack && (
+        <ImportSection
+          enabled={importEnabled}
+          setEnabled={setImportEnabled}
+          mode={importMode}
+          setMode={setImportMode}
+          stagingId={stagingId}
+          setStagingId={setStagingId}
+          pathFilename={pathFilename}
+          setPathFilename={setPathFilename}
+        />
+      )}
+
       <label className="flex items-start gap-2 rounded-md border border-neutral-800 p-3 text-sm text-neutral-300">
         <input
           type="checkbox"
@@ -295,6 +332,12 @@ function DockerForm() {
         </span>
       </label>
 
+      {importIncomplete && (
+        <p className="text-sm text-status-pending">
+          Bitte eine Import-Quelle wählen oder den Import deaktivieren.
+        </p>
+      )}
+
       {createMutation.isError && (
         <p className="text-sm text-status-error">
           {(createMutation.error as Error).message ||
@@ -305,7 +348,7 @@ function DockerForm() {
       <div className="flex gap-3 pt-2">
         <button
           type="submit"
-          disabled={!eula || createMutation.isPending}
+          disabled={!eula || importIncomplete || createMutation.isPending}
           className="rounded-md bg-status-online px-4 py-2 font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
         >
           {createMutation.isPending ? "Erstelle…" : "Server erstellen"}
@@ -319,6 +362,163 @@ function DockerForm() {
         </button>
       </div>
     </form>
+  );
+}
+
+// ── Import bestehender Welt / Server ─────────────────────────────────────────
+
+function ImportSection({
+  enabled,
+  setEnabled,
+  mode,
+  setMode,
+  stagingId,
+  setStagingId,
+  pathFilename,
+  setPathFilename,
+}: {
+  enabled: boolean;
+  setEnabled: (v: boolean) => void;
+  mode: "upload" | "path";
+  setMode: (v: "upload" | "path") => void;
+  stagingId: string | null;
+  setStagingId: (v: string | null) => void;
+  pathFilename: string;
+  setPathFilename: (v: string) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+
+  const sourcesQuery = useQuery({
+    queryKey: ["import-sources"],
+    queryFn: () => api.listImportSources(),
+    enabled: enabled && mode === "path",
+  });
+
+  const upload = useMutation({
+    mutationFn: (file: File) => api.stageImport(file, setProgress),
+    onMutate: () => {
+      setProgress(0);
+      setStagingId(null);
+    },
+    onSuccess: (res) => {
+      setProgress(null);
+      setStagingId(res.stagingId);
+    },
+    onError: () => setProgress(null),
+  });
+
+  return (
+    <fieldset className="rounded-md border border-neutral-800 p-3">
+      <legend className="px-1">
+        <label className="flex items-center gap-2 text-sm text-neutral-300">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+            className="size-4 accent-status-online"
+          />
+          Bestehende Welt / bestehenden Server importieren
+        </label>
+      </legend>
+
+      {enabled && (
+        <div className="space-y-3 pt-1">
+          <p className="text-xs text-neutral-500">
+            Ein komplettes Server-Verzeichnis als <code>.tar.gz</code> (mit{" "}
+            <code>world/</code>, optional <code>plugins/</code>, <code>mods/</code>,{" "}
+            <code>config/</code>, <code>server.properties</code>) wird vor dem ersten
+            Start übernommen; die enthaltene Welt wird aktiviert. Wähle Edition &amp;
+            MC-Version passend zum Ursprungs-Server. Ein umschließender Ordner im
+            Archiv wird automatisch erkannt.
+          </p>
+
+          <div className="flex gap-4 text-sm text-neutral-300">
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="importMode"
+                checked={mode === "upload"}
+                onChange={() => setMode("upload")}
+                className="accent-status-online"
+              />
+              Datei hochladen
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="importMode"
+                checked={mode === "path"}
+                onChange={() => setMode("path")}
+                className="accent-status-online"
+              />
+              Vom Server-Verzeichnis
+            </label>
+          </div>
+
+          {mode === "upload" ? (
+            <div className="space-y-2">
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".gz,.tgz,application/gzip"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) upload.mutate(file);
+                }}
+                className="text-sm text-neutral-400 file:mr-3 file:rounded-md file:border-0 file:bg-neutral-800 file:px-3 file:py-1.5 file:text-neutral-200"
+              />
+              {progress !== null && (
+                <div className="h-1.5 w-full overflow-hidden rounded bg-neutral-800">
+                  <div
+                    className="h-full bg-status-online transition-all"
+                    style={{ width: `${Math.round(progress * 100)}%` }}
+                  />
+                </div>
+              )}
+              {stagingId && progress === null && (
+                <p className="text-xs text-status-online">Hochgeladen ✓</p>
+              )}
+              {upload.isError && (
+                <p className="text-xs text-status-error">
+                  {(upload.error as Error).message || "Upload fehlgeschlagen"}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {sourcesQuery.isLoading && (
+                <p className="text-xs text-neutral-500">Lade Dateien…</p>
+              )}
+              {sourcesQuery.data && sourcesQuery.data.length === 0 && (
+                <p className="text-xs text-neutral-500">
+                  Keine Archive im Import-Verzeichnis gefunden.
+                </p>
+              )}
+              {sourcesQuery.data && sourcesQuery.data.length > 0 && (
+                <select
+                  value={pathFilename}
+                  onChange={(e) => setPathFilename(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">— Datei wählen —</option>
+                  {sourcesQuery.data.map((s) => (
+                    <option key={s.filename} value={s.filename}>
+                      {s.filename} ({formatBytes(s.sizeBytes)})
+                    </option>
+                  ))}
+                </select>
+              )}
+              {sourcesQuery.isError && (
+                <p className="text-xs text-status-error">
+                  Import-Verzeichnis konnte nicht gelesen werden.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </fieldset>
   );
 }
 

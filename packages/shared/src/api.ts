@@ -118,6 +118,31 @@ export interface CreateDockerServerRequest {
    * Version. Nicht zusammen mit `modrinthModpack` nutzbar.
    */
   curseforgeModpack?: string;
+  /**
+   * Optional: bestehendes Server-Verzeichnis (.tar.gz) beim Erstellen importieren
+   * — für Migration von außerhalb MineControl. Das Archiv wird vor dem ersten
+   * Start ins /data-Volume entpackt und die enthaltene Welt aktiviert.
+   *  - `upload`: zuvor via POST /api/servers/import/stage hochgeladenes Archiv.
+   *  - `path`:   Datei aus dem server-seitigen Import-Verzeichnis (IMPORT_DIR).
+   */
+  import?: ImportSource;
+}
+
+/** Quelle für einen Server-/Welt-Import beim Erstellen (siehe CreateDockerServerRequest). */
+export type ImportSource =
+  | { source: "upload"; stagingId: string }
+  | { source: "path"; filename: string };
+
+/** Eine server-seitig verfügbare Import-Datei (aus IMPORT_DIR). */
+export interface ImportSourceDto {
+  filename: string;
+  sizeBytes: number;
+}
+
+/** Antwort von POST /api/servers/import/stage (Datei auf dem Host zwischengespeichert). */
+export interface StageUploadResponse {
+  stagingId: string;
+  sizeBytes: number;
 }
 
 /** Lifecycle-Aktion auf einem Server (nur Docker kann alle). */

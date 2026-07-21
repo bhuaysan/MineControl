@@ -7,6 +7,8 @@ import type {
   CreateApiTokenResponse,
   FileContentResponse,
   FileListResponse,
+  ImportSourceDto,
+  StageUploadResponse,
   CreateDockerServerRequest,
   CreateExternalServerRequest,
   CreateScheduledTaskRequest,
@@ -121,6 +123,38 @@ export const api = {
     request<ServerDto>("/api/servers/docker", {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  listImportSources: () => request<ImportSourceDto[]>("/api/servers/import/sources"),
+  /**
+   * Lädt ein Import-Archiv ins Staging hoch und liefert die stagingId. Nutzt
+   * XMLHttpRequest für Fortschritt (0..1) bei großen Dateien.
+   */
+  stageImport: (file: File, onProgress?: (fraction: number) => void) =>
+    new Promise<StageUploadResponse>((resolve, reject) => {
+      const form = new FormData();
+      form.append("file", file);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/servers/import/stage");
+      xhr.withCredentials = true;
+      xhr.upload.onprogress = (e) => {
+        if (onProgress && e.lengthComputable) onProgress(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText) as StageUploadResponse);
+        } else {
+          let message = xhr.statusText;
+          try {
+            const body = JSON.parse(xhr.responseText) as { message?: string };
+            if (body.message) message = body.message;
+          } catch {
+            /* kein JSON */
+          }
+          reject(new ApiRequestError(xhr.status, message));
+        }
+      };
+      xhr.onerror = () => reject(new ApiRequestError(0, "Upload fehlgeschlagen"));
+      xhr.send(form);
     }),
   lifecycleAction: (id: string, action: LifecycleAction) =>
     request<{ ok: true }>(`/api/servers/${id}/lifecycle`, {

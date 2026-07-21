@@ -1,10 +1,16 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { join, resolve, sep } from "node:path";
+import { pipeline } from "node:stream/promises";
 import type {
   ConnectionTestResult,
+  ImportSourceDto,
   OnlinePlayer,
   PlayerAction,
   PlayerActionResponse,
   SendCommandResponse,
+  StageUploadResponse,
 } from "@minecontrol/shared";
 import {
   DIFFICULTIES,
@@ -21,6 +27,7 @@ import { ExternalAdapter } from "../../adapters/external.js";
 import { createAdapter } from "../../adapters/registry.js";
 import { UnsupportedOperationError } from "../../adapters/types.js";
 import { authenticate, requireRole } from "../../auth.js";
+import { config } from "../../config.js";
 import { encryptSecret } from "../../crypto.js";
 import { prisma } from "../../db.js";
 import {
@@ -41,6 +48,45 @@ import {
 import { listServerDtos, toServerDto } from "./service.js";
 
 const editionSchema = z.enum(SERVER_EDITIONS);
+
+// Import-Quelle beim Erstellen: entweder ein per Staging hochgeladenes Archiv
+// (UUID) oder eine Datei aus dem server-seitigen Import-Verzeichnis (IMPORT_DIR).
+const IMPORT_FILENAME_REGEX = /^[A-Za-z0-9._-]+\.(tar\.gz|tgz)$/;
+const importSourceSchema = z.discriminatedUnion("source", [
+  z.object({ source: z.literal("upload"), stagingId: z.string().uuid() }),
+  z.object({
+    source: z.literal("path"),
+    filename: z.string().max(200).regex(IMPORT_FILENAME_REGEX, "Ungültiger Dateiname"),
+  }),
+]);
+type ImportSourceInput = z.infer<typeof importSourceSchema>;
+
+/** Ob `filename` ein zulässiges Import-Archiv benennt (keine Pfad-Trenner/Traversal). */
+function isImportArchive(filename: string): boolean {
+  return IMPORT_FILENAME_REGEX.test(filename);
+}
+
+/**
+ * Löst eine Import-Quelle in einen existierenden Host-Pfad auf. `null`, wenn die
+ * Datei fehlt oder (bei „path") aus dem Import-Verzeichnis ausbräche.
+ */
+async function resolveImportPath(src: ImportSourceInput): Promise<string | null> {
+  const target =
+    src.source === "upload"
+      ? join(config.importStagingDir, `${src.stagingId}.tar.gz`)
+      : resolve(config.importDir, src.filename);
+  if (src.source === "path") {
+    const root = resolve(config.importDir);
+    if (target !== root && !target.startsWith(root + sep)) return null;
+  }
+  try {
+    const info = await stat(target);
+    if (!info.isFile()) return null;
+  } catch {
+    return null;
+  }
+  return target;
+}
 
 const createExternalSchema = z.object({
   name: z.string().min(1).max(64),
@@ -77,10 +123,16 @@ const createDockerSchema = z.object({
   eula: z.literal(true),
   modrinthModpack: z.string().max(200).optional(),
   curseforgeModpack: z.string().max(300).optional(),
-}).refine((d) => !(d.modrinthModpack && d.curseforgeModpack), {
-  message: "Nur ein Modpack (Modrinth ODER CurseForge) angeben",
-  path: ["curseforgeModpack"],
-});
+  import: importSourceSchema.optional(),
+})
+  .refine((d) => !(d.modrinthModpack && d.curseforgeModpack), {
+    message: "Nur ein Modpack (Modrinth ODER CurseForge) angeben",
+    path: ["curseforgeModpack"],
+  })
+  .refine((d) => !(d.import && (d.modrinthModpack || d.curseforgeModpack)), {
+    message: "Import und Modpack können nicht kombiniert werden",
+    path: ["import"],
+  });
 
 const lifecycleSchema = z.object({ action: z.enum(LIFECYCLE_ACTIONS) });
 
@@ -206,6 +258,18 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
       const data = parsed.data;
       const rconHostPort = data.port + 10000;
 
+      // Import-Quelle (falls angegeben) vor dem Anlegen zu einem Host-Pfad auflösen.
+      let importFilePath: string | undefined;
+      if (data.import) {
+        const resolved = await resolveImportPath(data.import);
+        if (!resolved) {
+          return reply
+            .code(400)
+            .send({ error: "import_not_found", message: "Import-Datei nicht gefunden" });
+        }
+        importFilePath = resolved;
+      }
+
       // Port-Kollisionen mit bestehenden Servern vermeiden.
       const clash = await prisma.server.findFirst({
         where: {
@@ -251,7 +315,12 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
         userId: request.user?.id,
         serverId: server.id,
         action: "server.create",
-        details: { name: server.name, type: "DOCKER", edition: data.edition },
+        details: {
+          name: server.name,
+          type: "DOCKER",
+          edition: data.edition,
+          imported: Boolean(importFilePath),
+        },
       });
 
       // Provisionierung läuft asynchron; Fortschritt via WS-Konsole.
@@ -269,11 +338,73 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
         onlineMode: data.onlineMode,
         modrinthModpack: data.modrinthModpack,
         curseforgeModpack: data.curseforgeModpack,
+        importFilePath,
       }).catch((err) => {
         request.log.error(err, "Docker-Provisionierung fehlgeschlagen");
       });
 
       return reply.code(202).send(await toServerDto(server));
+    },
+  );
+
+  // Server-seitig bereitgestellte Import-Archive auflisten — nur Admin.
+  app.get(
+    "/api/servers/import/sources",
+    { preHandler: requireRole("ADMIN") },
+    async (_request, reply) => {
+      let entries: string[];
+      try {
+        entries = await readdir(config.importDir);
+      } catch {
+        // Verzeichnis existiert (noch) nicht → leere Liste.
+        return reply.send([] satisfies ImportSourceDto[]);
+      }
+      const sources: ImportSourceDto[] = [];
+      for (const filename of entries) {
+        if (!isImportArchive(filename)) continue;
+        try {
+          const info = await stat(join(config.importDir, filename));
+          if (info.isFile()) sources.push({ filename, sizeBytes: info.size });
+        } catch {
+          /* Datei verschwand zwischen readdir und stat — überspringen. */
+        }
+      }
+      sources.sort((a, b) => a.filename.localeCompare(b.filename));
+      return reply.send(sources);
+    },
+  );
+
+  // Import-Archiv hochladen (Staging) — nur Admin. Gestreamt auf Platte, damit
+  // GB-große Server-Verzeichnisse ohne RAM-Buffer und ohne das globale 50-MB-Limit
+  // (per-Request angehoben) verarbeitet werden können.
+  app.post(
+    "/api/servers/import/stage",
+    { preHandler: requireRole("ADMIN") },
+    async (request, reply) => {
+      const file = await request.file({ limits: { fileSize: config.importMaxBytes } });
+      if (!file) {
+        return reply.code(400).send({ error: "bad_request", message: "Keine Datei" });
+      }
+      await mkdir(config.importStagingDir, { recursive: true });
+      const stagingId = randomUUID();
+      const target = join(config.importStagingDir, `${stagingId}.tar.gz`);
+      try {
+        await pipeline(file.file, createWriteStream(target));
+      } catch (err) {
+        await rm(target, { force: true }).catch(() => {});
+        // @fastify/multipart wirft bei Überschreiten des fileSize-Limits (Default
+        // throwFileSizeLimit=true) einen FST_REQ_FILE_TOO_LARGE (Status 413).
+        const status = (err as { statusCode?: number }).statusCode;
+        if (status === 413 || file.file.truncated) {
+          return reply.code(413).send({ error: "too_large", message: "Datei zu groß" });
+        }
+        return reply
+          .code(500)
+          .send({ error: "stage_failed", message: (err as Error).message });
+      }
+      const { size } = await stat(target);
+      const body: StageUploadResponse = { stagingId, sizeBytes: size };
+      return reply.code(201).send(body);
     },
   );
 

@@ -1,7 +1,10 @@
+import { rm } from "node:fs/promises";
+import { resolve, sep } from "node:path";
 import type { Server } from "@prisma/client";
 import * as tar from "tar-stream";
 import { config } from "../../config.js";
 import { markProvisioning } from "../../adapters/docker.js";
+import { importArchiveIntoVolume } from "./import.js";
 import {
   CONTAINER_MC_PORT,
   CONTAINER_RCON_PORT,
@@ -38,6 +41,11 @@ export interface ProvisionParams {
   networkName?: string;
   /** Optional: zusätzlicher DNS-Alias im Netzwerk (z. B. „lobby"). */
   networkAlias?: string;
+  /**
+   * Optional: Pfad zu einem .tar.gz auf dem Host, das vor dem ersten Start ins
+   * /data-Volume importiert wird (Migration eines bestehenden Server-Verzeichnisses).
+   */
+  importFilePath?: string;
 }
 
 /** Standard-UID/GID der itzg-Images (minecraft-server & mc-proxy laufen als 1000). */
@@ -162,6 +170,9 @@ export async function provisionDockerServer(
     await ensureImage(server.id);
     pushConsoleLine(server.id, "» Erstelle Container …");
     await createContainer(server, params);
+    if (params.importFilePath) {
+      await importExistingServer(server, params.importFilePath);
+    }
     pushConsoleLine(server.id, "» Starte Container …");
     await createDockerAdapter(server).start();
     pushConsoleLine(server.id, "» Container gestartet — Minecraft bootet …");
@@ -169,9 +180,41 @@ export async function provisionDockerServer(
     pushConsoleLine(server.id, `Fehler beim Einrichten: ${(err as Error).message}`);
     throw err;
   } finally {
+    // Staging-Upload nach dem Import wieder entfernen (best effort).
+    if (params.importFilePath) await cleanupStagedImport(params.importFilePath);
     markProvisioning(server.id, false);
     reattachServerStreams(server.id);
     await broadcastServerStatus(server.id);
+  }
+}
+
+/**
+ * Importiert ein bestehendes Server-Verzeichnis (.tar.gz) ins frische Volume und
+ * stellt sicher, dass die enthaltene Welt aktiv ist: Bringt das Fremd-Archiv keine
+ * server.properties mit (oder zeigt `level-name` auf einen fehlenden Ordner), wird
+ * `level-name` auf die erkannte Welt gesetzt. MineControls RCON/Port-Env überschreibt
+ * itzg beim Boot ohnehin — der Import lässt RCON also unangetastet.
+ */
+async function importExistingServer(server: Server, filePath: string): Promise<void> {
+  pushConsoleLine(server.id, "» Importiere bestehendes Server-Verzeichnis …");
+  const { worldFolder } = await importArchiveIntoVolume(server.id, filePath);
+  if (worldFolder) {
+    const props = await readServerProperties(server);
+    const level = props["level-name"];
+    if (!level || level !== worldFolder) {
+      await writeServerProperties(server, { "level-name": worldFolder });
+      pushConsoleLine(server.id, `» Aktive Welt: „${worldFolder}".`);
+    }
+  }
+  pushConsoleLine(server.id, "» Import abgeschlossen.");
+}
+
+/** Löscht eine importierte Datei, sofern sie im Staging-Verzeichnis liegt. */
+async function cleanupStagedImport(filePath: string): Promise<void> {
+  const stagingRoot = resolve(config.importStagingDir);
+  const resolved = resolve(filePath);
+  if (resolved === stagingRoot || resolved.startsWith(stagingRoot + sep)) {
+    await rm(resolved, { force: true }).catch(() => {});
   }
 }
 
