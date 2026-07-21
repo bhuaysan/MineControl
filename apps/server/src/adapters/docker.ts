@@ -7,7 +7,7 @@ import type {
   ServerEdition,
   ServerStatus,
 } from "@minecontrol/shared";
-import { ExternalAdapter } from "./external.js";
+import { ExternalAdapter, type PersistentRcon } from "./external.js";
 import {
   containerName,
   docker,
@@ -139,6 +139,11 @@ export class DockerAdapter implements ServerAdapter {
 
   sendCommand(cmd: string): Promise<string> {
     return this.net.sendCommand(cmd);
+  }
+
+  /** Wiederverwendete RCON-Verbindung für wiederholte Befehle (siehe {@link PersistentRcon}). */
+  openPersistentRcon(): Promise<PersistentRcon> {
+    return this.net.openPersistentRcon();
   }
 
   async start(): Promise<void> {

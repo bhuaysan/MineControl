@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { createDockerAdapter } from "../adapters/registry.js";
 import { SESSION_COOKIE } from "../config.js";
 import { prisma } from "../db.js";
-import { TPS_EDITIONS, sampleTps } from "../modules/metrics/tps.js";
+import { TPS_EDITIONS, parseTps } from "../modules/metrics/tps.js";
 import { listServerDtos, toServerDto } from "../modules/servers/service.js";
 
 /** Eine aktive WebSocket-Verbindung mit ihren Abos. */
@@ -102,21 +102,34 @@ async function beginMetrics(serverId: string): Promise<() => void> {
   );
 
   // TPS (Paper/Spigot) wird per RCON gepollt — docker stats liefert das nicht.
+  // Eine EINZELNE RCON-Verbindung bleibt für die Dauer des Streams offen
+  // (statt je Poll neu zu verbinden) — sonst spammt jeder 10s-Tick die
+  // Server-Konsole mit „RCON Client started/shutting down".
   let tpsTimer: ReturnType<typeof setInterval> | undefined;
+  let persistentRcon: Awaited<ReturnType<typeof adapter.openPersistentRcon>> | undefined;
   if (TPS_EDITIONS.includes(server.edition)) {
-    const pollTps = async (): Promise<void> => {
-      const tps = await sampleTps(adapter);
-      if (tps != null) {
-        broadcast(`metrics:${serverId}`, { type: "metrics.update", serverId, tps });
-      }
-    };
-    void pollTps();
-    tpsTimer = setInterval(() => void pollTps(), 10_000);
+    persistentRcon = await adapter.openPersistentRcon().catch(() => undefined);
+    if (persistentRcon) {
+      const rcon = persistentRcon;
+      const pollTps = async (): Promise<void> => {
+        try {
+          const tps = parseTps(await rcon.send("tps"));
+          if (tps != null) {
+            broadcast(`metrics:${serverId}`, { type: "metrics.update", serverId, tps });
+          }
+        } catch {
+          /* Verbindung kurzzeitig weg (z. B. Neustart) — nächster Tick versucht erneut. */
+        }
+      };
+      void pollTps();
+      tpsTimer = setInterval(() => void pollTps(), 10_000);
+    }
   }
 
   return () => {
     stopStats();
     if (tpsTimer) clearInterval(tpsTimer);
+    void persistentRcon?.close();
   };
 }
 

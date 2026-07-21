@@ -41,6 +41,18 @@ export interface ExternalAdapterConfig {
 }
 
 /**
+ * Eine wiederverwendete RCON-Verbindung für wiederholte Befehle (z. B.
+ * periodisches TPS-Polling). Baut nur EINMAL eine Verbindung auf statt bei
+ * jedem Befehl neu — vermeidet das „RCON Client started/shutting down"-
+ * Log-Rauschen in der Server-Konsole. Bei Verbindungsverlust wird beim
+ * nächsten `send()` transparent neu verbunden.
+ */
+export interface PersistentRcon {
+  send(cmd: string): Promise<string>;
+  close(): Promise<void>;
+}
+
+/**
  * Adapter für bereits laufende, externe Minecraft-Server.
  * Status/Spielerliste via Server List Ping, Befehle via RCON (falls konfiguriert).
  * Start/Stop ist nicht möglich (Prozess läuft außerhalb unserer Kontrolle).
@@ -137,6 +149,37 @@ export class ExternalAdapter implements ServerAdapter {
     } finally {
       await rcon.end().catch(() => {});
     }
+  }
+
+  /**
+   * Öffnet eine RCON-Verbindung, die für mehrere Befehle offen bleibt (siehe
+   * {@link PersistentRcon}). Für einmalige Befehle weiterhin `sendCommand`
+   * verwenden — dort ist Verbindungsaufbau je Aufruf gewünscht/unkritisch.
+   */
+  async openPersistentRcon(): Promise<PersistentRcon> {
+    let rcon: Rcon | null = await this.connectRcon();
+    let closed = false;
+
+    return {
+      send: async (cmd: string): Promise<string> => {
+        if (closed) throw new Error("RCON-Verbindung bereits geschlossen");
+        try {
+          rcon ??= await this.connectRcon();
+          return await rcon.send(cmd);
+        } catch (err) {
+          // Verbindung verloren (z. B. Server-Neustart) — beim nächsten
+          // send() neu aufbauen, statt dauerhaft zu scheitern.
+          rcon = null;
+          throw err;
+        }
+      },
+      close: async (): Promise<void> => {
+        closed = true;
+        const r = rcon;
+        rcon = null;
+        await r?.end().catch(() => {});
+      },
+    };
   }
 
   async start(): Promise<void> {
