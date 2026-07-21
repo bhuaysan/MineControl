@@ -58,6 +58,33 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ── Prozessweiter Per-Ressourcen-Mutex ─────────────────────────────────────────
+//
+// SQLite (und der Single-Process-Server) bieten kein Row-Locking über mehrere
+// Statements hinweg. Um zu verhindern, dass zwei Anfragen denselben Container
+// gleichzeitig zerstören/neu aufsetzen (destroy/create-Race auf demselben
+// `containerName(server.id)`) oder denselben Proxy gleichzeitig neu starten,
+// serialisieren wir Operationen anhand einer Ressourcen-ID (Server- bzw.
+// Proxy-ID). Verschiedene IDs laufen weiterhin parallel; gleiche IDs reihen
+// sich hintereinander ein.
+const resourceLocks = new Map<string, Promise<unknown>>();
+
+/** Führt `fn` aus, sobald keine andere Operation mit derselben `id` mehr läuft. */
+function withResourceLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  const prev = resourceLocks.get(id) ?? Promise.resolve();
+  // `prev` ist stets ein bereits gefangenes Promise → läuft `fn` erst nach dem
+  // Settlen des Vorgängers, unabhängig von dessen Ausgang.
+  const run = prev.then(fn);
+  const tail = run.catch(() => {});
+  resourceLocks.set(id, tail);
+  // Aufräumen, sobald diese Operation das Kettenende ist (verhindert das
+  // unbegrenzte Wachsen der Map bei vielen kurzlebigen Servern).
+  void tail.then(() => {
+    if (resourceLocks.get(id) === tail) resourceLocks.delete(id);
+  });
+  return run;
+}
+
 /** Wirft, falls ein Host-Port bereits von einem Server belegt ist. */
 async function assertPortFree(...ports: number[]): Promise<void> {
   const clash = await prisma.server.findFirst({
@@ -137,34 +164,46 @@ export async function getNetworkDto(id: string): Promise<NetworkDto | null> {
 
 /** Erzeugt die Proxy-Konfiguration aus dem aktuellen Mitgliederstand und spielt sie ein. */
 async function rewriteProxyConfig(networkId: string): Promise<void> {
+  // Das frische Neuladen des Netzes UND der Config-Write+Restart laufen unter
+  // dem Proxy-Lock, damit zwei nebenläufige Netz-Änderungen weder eine veraltete
+  // Mitgliederliste schreiben noch den Proxy doppelt/überlappend neu starten.
   const network = await prisma.network.findUnique({
     where: { id: networkId },
     include: includeRelations(),
   });
   if (!network) return;
-  const backends = [...network.members]
-    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-    .filter((m) => m.networkAlias)
-    .map((m) => ({ alias: m.networkAlias as string }));
+  await withResourceLock(network.proxyServer.id, async () => {
+    // Innerhalb des Locks erneut laden — die Mitgliederliste kann sich seit dem
+    // ersten Lesen (vor dem Lock-Erwerb) geändert haben.
+    const fresh = await prisma.network.findUnique({
+      where: { id: networkId },
+      include: includeRelations(),
+    });
+    if (!fresh) return;
+    const backends = [...fresh.members]
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .filter((m) => m.networkAlias)
+      .map((m) => ({ alias: m.networkAlias as string }));
 
-  const isBungee = network.proxyServer.edition === "BUNGEECORD";
-  const filename = isBungee ? "config.yml" : "velocity.toml";
-  const content = isBungee
-    ? renderBungeeConfig({ motd: network.proxyServer.name, backends })
-    : renderVelocityToml({ motd: network.proxyServer.name, backends });
-  await putDataFiles(network.proxyServer.id, PROXY_DATA_DIR, [
-    { name: filename, content },
-  ]);
-  // Weder Velocity noch BungeeCord haben eine zuverlässige Hot-Reload ohne
-  // Plugin → Proxy neu starten.
-  suppressDownAlert(network.proxyServer.id);
-  try {
-    await createDockerAdapter(network.proxyServer).restart();
-    reattachServerStreams(network.proxyServer.id);
-  } catch {
-    /* Proxy evtl. noch nicht gestartet — Config wird beim Start gelesen. */
-  }
-  void broadcastServerStatus(network.proxyServer.id);
+    const isBungee = fresh.proxyServer.edition === "BUNGEECORD";
+    const filename = isBungee ? "config.yml" : "velocity.toml";
+    const content = isBungee
+      ? renderBungeeConfig({ motd: fresh.proxyServer.name, backends })
+      : renderVelocityToml({ motd: fresh.proxyServer.name, backends });
+    await putDataFiles(fresh.proxyServer.id, PROXY_DATA_DIR, [
+      { name: filename, content },
+    ]);
+    // Weder Velocity noch BungeeCord haben eine zuverlässige Hot-Reload ohne
+    // Plugin → Proxy neu starten.
+    suppressDownAlert(fresh.proxyServer.id);
+    try {
+      await createDockerAdapter(fresh.proxyServer).restart();
+      reattachServerStreams(fresh.proxyServer.id);
+    } catch {
+      /* Proxy evtl. noch nicht gestartet — Config wird beim Start gelesen. */
+    }
+    void broadcastServerStatus(fresh.proxyServer.id);
+  });
 }
 
 // ── Container mit korrektem online-mode-Env neu aufsetzen ──────────────────────
@@ -485,18 +524,34 @@ export async function attachSubserver(
     }
   }
 
-  await prisma.server.update({
-    where: { id: server.id },
-    data: { networkId: network.id, networkAlias: alias },
+  // Membership-Entscheidung pro Netz serialisiert: Alias-Prüfung gegen den
+  // *frischen* Stand + atomarer Claim schließen das TOCTOU-Fenster zwischen
+  // zwei nebenläufigen Attach-Anfragen (der Claim belegt nur, wenn der Server
+  // noch in keinem Netz ist).
+  await withResourceLock(network.id, async () => {
+    const fresh = await loadNetwork(networkId);
+    assertAliasFree(fresh, alias);
+    const claimed = await prisma.server.updateMany({
+      where: { id: server.id, networkId: null },
+      data: { networkId: network.id, networkAlias: alias },
+    });
+    if (claimed.count === 0) {
+      throw new NetworkError(409, "already_member", "Server ist bereits in einem Netzwerk");
+    }
   });
 
   // Neu aufsetzen (online-mode aus, im Netzwerk) → Forwarding an → Proxy.
-  void reprovisionServer(server, {
-    onlineMode: false,
-    networkName: network.dockerNetworkName,
-    networkAlias: alias,
+  // Container-Operationen (destroy/create + Forwarding-Patch) laufen unter dem
+  // Server-Lock, damit sie sich nicht mit einem parallelen Detach/Reprovision
+  // desselben Servers verschränken.
+  void withResourceLock(server.id, async () => {
+    await reprovisionServer(server, {
+      onlineMode: false,
+      networkName: network.dockerNetworkName,
+      networkAlias: alias,
+    });
+    await configureBackendForwarding(server, network, true);
   })
-    .then(() => configureBackendForwarding(server, network, true))
     .then(() => rewriteProxyConfig(network.id))
     .catch((err) => {
       pushConsoleLine(server.id, `Anhängen fehlgeschlagen: ${err}`);
@@ -538,41 +593,51 @@ export async function createSubserver(
   await assertPortFree(input.port, rconHostPort);
 
   const rconPassword = randomBytes(16).toString("hex");
-  const server = await prisma.server.create({
-    data: {
-      name: input.name,
-      type: "DOCKER",
-      edition: input.edition,
-      host: "127.0.0.1",
-      port: input.port,
-      rconPort: rconHostPort,
-      rconPasswordEnc: encryptSecret(rconPassword),
-      networkId: network.id,
-      networkAlias: input.alias,
-      dockerConfig: JSON.stringify({
+  // Alias-Prüfung + Anlage pro Netz serialisiert: gegen den frischen Stand
+  // prüfen, damit zwei nebenläufige Create-Anfragen nicht denselben Alias
+  // belegen.
+  const server = await withResourceLock(network.id, async () => {
+    const fresh = await loadNetwork(networkId);
+    assertAliasFree(fresh, input.alias);
+    return prisma.server.create({
+      data: {
+        name: input.name,
+        type: "DOCKER",
         edition: input.edition,
-        version: input.version,
-        memoryMb: input.memoryMb,
-        motd: input.motd,
-        onlineMode: false,
-      }),
-    },
+        host: "127.0.0.1",
+        port: input.port,
+        rconPort: rconHostPort,
+        rconPasswordEnc: encryptSecret(rconPassword),
+        networkId: network.id,
+        networkAlias: input.alias,
+        dockerConfig: JSON.stringify({
+          edition: input.edition,
+          version: input.version,
+          memoryMb: input.memoryMb,
+          motd: input.motd,
+          onlineMode: false,
+        }),
+      },
+    });
   });
 
   // Provisionieren (im Netzwerk, online-mode aus) → dann Forwarding setzen.
-  void provisionDockerServer(server, {
-    edition: input.edition,
-    version: input.version,
-    memoryMb: input.memoryMb,
-    mcPort: input.port,
-    rconHostPort,
-    rconPassword,
-    motd: input.motd,
-    onlineMode: false,
-    networkName: network.dockerNetworkName,
-    networkAlias: input.alias,
+  // Container-Operationen unter dem Server-Lock (destroy/create-Race).
+  void withResourceLock(server.id, async () => {
+    await provisionDockerServer(server, {
+      edition: input.edition,
+      version: input.version,
+      memoryMb: input.memoryMb,
+      mcPort: input.port,
+      rconHostPort,
+      rconPassword,
+      motd: input.motd,
+      onlineMode: false,
+      networkName: network.dockerNetworkName,
+      networkAlias: input.alias,
+    });
+    await configureBackendForwarding(server, network, true);
   })
-    .then(() => configureBackendForwarding(server, network, true))
     .then(() => rewriteProxyConfig(network.id))
     .catch((err) => {
       pushConsoleLine(server.id, `Subserver-Einrichtung fehlgeschlagen: ${err}`);
@@ -595,20 +660,26 @@ export async function detachSubserver(
     throw new NetworkError(404, "not_found", "Subserver nicht im Netzwerk");
   }
 
-  await prisma.server.update({
-    where: { id: server.id },
+  // Atomare Freigabe (nur wenn noch in genau diesem Netz) — verhindert, dass
+  // zwei parallele Detach-Aufrufe den Server beide „erfolgreich" zurücksetzen
+  // und dabei den Container doppelt reprovisionieren.
+  const released = await prisma.server.updateMany({
+    where: { id: server.id, networkId: network.id },
     data: { networkId: null, networkAlias: null },
   });
+  if (released.count === 0) return; // bereits von einem anderen Aufruf gelöst
   await rewriteProxyConfig(network.id);
 
   // Auf Standalone zurücksetzen: neu aufsetzen ohne Netzwerk, online-mode wie
-  // ursprünglich, Forwarding-Konfiguration deaktivieren/entfernen.
+  // ursprünglich, Forwarding-Konfiguration deaktivieren/entfernen. Container-
+  // Operationen unter dem Server-Lock (destroy/create-Race).
   const cfg = parseDockerCfg(server);
-  void reprovisionServer(server, { onlineMode: cfg.onlineMode })
-    .then(() => configureBackendForwarding(server, network, false))
-    .catch((err) => {
-      pushConsoleLine(server.id, `Zurücksetzen fehlgeschlagen: ${err}`);
-    });
+  void withResourceLock(server.id, async () => {
+    await reprovisionServer(server, { onlineMode: cfg.onlineMode });
+    await configureBackendForwarding(server, network, false);
+  }).catch((err) => {
+    pushConsoleLine(server.id, `Zurücksetzen fehlgeschlagen: ${err}`);
+  });
 }
 
 // ── Netzwerk löschen ────────────────────────────────────────────────────────────
@@ -633,8 +704,12 @@ export async function deleteNetwork(networkId: string): Promise<void> {
         })
         .catch(() => {});
       const cfg = parseDockerCfg(member);
-      await reprovisionServer(member, { onlineMode: cfg.onlineMode }).catch(() => {});
-      await configureBackendForwarding(member, network, false).catch(() => {});
+      // Server-Lock: nicht mit einem parallelen Detach/Reprovision desselben
+      // Members verschränken.
+      await withResourceLock(member.id, async () => {
+        await reprovisionServer(member, { onlineMode: cfg.onlineMode });
+        await configureBackendForwarding(member, network, false);
+      }).catch(() => {});
     }
     await removeDockerNetwork(dockerNet);
   })().catch(() => {});
