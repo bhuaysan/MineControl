@@ -28,7 +28,18 @@ import {
   putDataFiles,
   readDataTextFile,
 } from "../servers/docker.js";
+import { patchSpigotBungee, renderBungeeConfig } from "./bungee.js";
+import { configureModdedForwarding } from "./moddedForwarding.js";
 import { patchPaperVelocity, renderVelocityToml } from "./velocity.js";
+
+const MODDED_EDITIONS = ["FABRIC", "FORGE", "NEOFORGE"];
+
+/** Erlaubte Subserver-Editionen je Proxy-Typ (modded braucht Velocity-Forwarding-Mods). */
+function allowedSubserverEditions(proxyEdition: string): string[] {
+  return proxyEdition === "BUNGEECORD"
+    ? ["PAPER", "SPIGOT"]
+    : ["PAPER", "SPIGOT", ...MODDED_EDITIONS];
+}
 
 /** Fehler mit HTTP-Status für die Route-Schicht. */
 export class NetworkError extends Error {
@@ -124,7 +135,7 @@ export async function getNetworkDto(id: string): Promise<NetworkDto | null> {
 
 // ── Proxy-Konfiguration schreiben ──────────────────────────────────────────────
 
-/** Erzeugt die velocity.toml aus dem aktuellen Mitgliederstand und spielt sie ein. */
+/** Erzeugt die Proxy-Konfiguration aus dem aktuellen Mitgliederstand und spielt sie ein. */
 async function rewriteProxyConfig(networkId: string): Promise<void> {
   const network = await prisma.network.findUnique({
     where: { id: networkId },
@@ -135,17 +146,23 @@ async function rewriteProxyConfig(networkId: string): Promise<void> {
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
     .filter((m) => m.networkAlias)
     .map((m) => ({ alias: m.networkAlias as string }));
-  const toml = renderVelocityToml({ motd: network.proxyServer.name, backends });
+
+  const isBungee = network.proxyServer.edition === "BUNGEECORD";
+  const filename = isBungee ? "config.yml" : "velocity.toml";
+  const content = isBungee
+    ? renderBungeeConfig({ motd: network.proxyServer.name, backends })
+    : renderVelocityToml({ motd: network.proxyServer.name, backends });
   await putDataFiles(network.proxyServer.id, PROXY_DATA_DIR, [
-    { name: "velocity.toml", content: toml },
+    { name: filename, content },
   ]);
-  // Velocity hat keine zuverlässige Hot-Reload ohne Plugin → Proxy neu starten.
+  // Weder Velocity noch BungeeCord haben eine zuverlässige Hot-Reload ohne
+  // Plugin → Proxy neu starten.
   suppressDownAlert(network.proxyServer.id);
   try {
     await createDockerAdapter(network.proxyServer).restart();
     reattachServerStreams(network.proxyServer.id);
   } catch {
-    /* Proxy evtl. noch nicht gestartet — velocity.toml wird beim Start gelesen. */
+    /* Proxy evtl. noch nicht gestartet — Config wird beim Start gelesen. */
   }
   void broadcastServerStatus(network.proxyServer.id);
 }
@@ -262,11 +279,83 @@ async function configurePaperVelocity(
   void broadcastServerStatus(server.id);
 }
 
+// ── Spigot-BungeeCord-Forwarding (spigot.yml) ─────────────────────────────────
+
+const SPIGOT_YML_PATH = "/data/spigot.yml";
+
+/**
+ * Aktiviert/deaktiviert `settings.bungeecord` in spigot.yml und startet neu.
+ * BungeeCord braucht kein Secret (einfaches IP-Forwarding statt Velocitys
+ * Modern Forwarding) — nur diesen einen Schalter auf der Backend-Seite.
+ */
+async function configureSpigotBungee(server: Server, enabled: boolean): Promise<void> {
+  let raw = await readDataTextFile(server.id, SPIGOT_YML_PATH);
+  if (!raw) {
+    pushConsoleLine(server.id, "» Warte auf Spigot-Konfiguration …");
+    for (let i = 0; i < 40 && !raw; i++) {
+      await sleep(3000);
+      raw = await readDataTextFile(server.id, SPIGOT_YML_PATH);
+    }
+  }
+  if (!raw) {
+    pushConsoleLine(server.id, "! spigot.yml nicht gefunden — BungeeCord-Forwarding nicht gesetzt.");
+    return;
+  }
+  const { content, patched } = patchSpigotBungee(raw, enabled);
+  if (patched) {
+    await putDataFiles(server.id, "/data", [{ name: "spigot.yml", content }]);
+  } else {
+    pushConsoleLine(server.id, "! bungeecord-Feld in spigot.yml nicht gefunden.");
+  }
+
+  suppressDownAlert(server.id);
+  try {
+    await createDockerAdapter(server).restart();
+    reattachServerStreams(server.id);
+    pushConsoleLine(
+      server.id,
+      enabled
+        ? "» BungeeCord-Forwarding aktiviert, Subserver neu gestartet."
+        : "» BungeeCord-Forwarding deaktiviert, Subserver neu gestartet.",
+    );
+  } catch {
+    /* Best effort. */
+  }
+  void broadcastServerStatus(server.id);
+}
+
+// ── Forwarding-Dispatcher (Proxy-Typ × Subserver-Edition) ─────────────────────
+
+/**
+ * Konfiguriert das passende Forwarding auf einem Subserver, je nach Proxy-Typ
+ * und Server-Edition: Paper/Spigot+Velocity → paper-global.yml,
+ * Paper/Spigot+BungeeCord → spigot.yml, modded (Fabric/Forge/NeoForge, nur
+ * hinter Velocity möglich) → Kompatibilitäts-Mod + dessen Config.
+ */
+async function configureBackendForwarding(
+  server: Server,
+  network: NetworkWithRelations,
+  enabled: boolean,
+): Promise<void> {
+  if (network.proxyServer.edition === "BUNGEECORD") {
+    await configureSpigotBungee(server, enabled);
+    return;
+  }
+  const secret = decryptSecret(network.forwardingSecretEnc);
+  if (MODDED_EDITIONS.includes(server.edition)) {
+    await configureModdedForwarding(server, secret, enabled);
+  } else {
+    await configurePaperVelocity(server, secret, enabled, true);
+  }
+}
+
 // ── Netzwerk erstellen ─────────────────────────────────────────────────────────
 
 export interface CreateNetworkInput {
   name: string;
   proxyName: string;
+  /** Proxy-Software; Standard Velocity. */
+  proxyEdition?: "VELOCITY" | "BUNGEECORD";
   version: string;
   memoryMb: number;
   port: number;
@@ -277,6 +366,12 @@ export async function createNetwork(
 ): Promise<{ networkId: string; proxyServerId: string }> {
   await assertPortFree(input.port);
 
+  const proxyEdition = input.proxyEdition ?? "VELOCITY";
+  const isBungee = proxyEdition === "BUNGEECORD";
+  // BungeeCord braucht kein Forwarding-Secret (IP-Forwarding statt Modern
+  // Forwarding) — wird trotzdem erzeugt/gespeichert, um das Datenmodell und
+  // den restlichen Code (forwardingSecretEnc ist ein Pflichtfeld) einfach zu
+  // halten; bleibt für BungeeCord-Netzwerke schlicht ungenutzt.
   const secret = randomBytes(24).toString("hex");
 
   // Proxy-Server-Datensatz (kein RCON, Host 127.0.0.1, Port = Netzwerk-Port).
@@ -284,11 +379,11 @@ export async function createNetwork(
     data: {
       name: input.proxyName,
       type: "DOCKER",
-      edition: "VELOCITY",
+      edition: proxyEdition,
       host: "127.0.0.1",
       port: input.port,
       dockerConfig: JSON.stringify({
-        edition: "VELOCITY",
+        edition: proxyEdition,
         version: input.version,
         memoryMb: input.memoryMb,
         isProxy: true,
@@ -312,17 +407,19 @@ export async function createNetwork(
 
   await ensureDockerNetwork(dockerNet);
 
-  const velocityToml = renderVelocityToml({
-    motd: input.proxyName,
-    backends: [],
-  });
+  const configFilename = isBungee ? "config.yml" : "velocity.toml";
+  const configContent = isBungee
+    ? renderBungeeConfig({ motd: input.proxyName, backends: [] })
+    : renderVelocityToml({ motd: input.proxyName, backends: [] });
   void provisionProxyServer(proxyServer, {
+    proxyEdition,
     version: input.version,
     memoryMb: input.memoryMb,
     mcPort: input.port,
     networkName: dockerNet,
-    velocityToml,
-    forwardingSecret: secret,
+    configFilename,
+    configContent,
+    forwardingSecret: isBungee ? undefined : secret,
   }).catch((err) => {
     pushConsoleLine(proxyServer.id, `Proxy-Provisionierung fehlgeschlagen: ${err}`);
   });
@@ -365,18 +462,27 @@ export async function attachSubserver(
   if (server.networkId || server.id === network.proxyServerId) {
     throw new NetworkError(409, "already_member", "Server ist bereits in einem Netzwerk");
   }
-  if (!["PAPER", "SPIGOT"].includes(server.edition)) {
-    throw new NetworkError(422, "unsupported", "Nur Paper/Spigot als Subserver");
+  const allowed = allowedSubserverEditions(network.proxyServer.edition);
+  if (!allowed.includes(server.edition)) {
+    throw new NetworkError(
+      422,
+      "unsupported",
+      `Dieser Proxy unterstützt nur: ${allowed.join("/")}`,
+    );
   }
 
-  // paper-global.yml muss existieren (Server muss einmal gestartet worden sein).
-  const raw = await readDataTextFile(server.id, PAPER_GLOBAL_PATH);
-  if (!raw) {
-    throw new NetworkError(
-      409,
-      "not_initialized",
-      "Subserver muss einmal gestartet worden sein (paper-global.yml fehlt)",
-    );
+  // Paper/Spigot: paper-global.yml muss existieren (Server muss einmal
+  // gestartet worden sein). Modded Editionen haben keine vergleichbare
+  // Vorbedingung — der Forwarding-Mod wird beim Anhängen selbst installiert.
+  if (["PAPER", "SPIGOT"].includes(server.edition)) {
+    const raw = await readDataTextFile(server.id, PAPER_GLOBAL_PATH);
+    if (!raw) {
+      throw new NetworkError(
+        409,
+        "not_initialized",
+        "Subserver muss einmal gestartet worden sein (paper-global.yml fehlt)",
+      );
+    }
   }
 
   await prisma.server.update({
@@ -384,14 +490,13 @@ export async function attachSubserver(
     data: { networkId: network.id, networkAlias: alias },
   });
 
-  const secret = decryptSecret(network.forwardingSecretEnc);
-  // Neu aufsetzen (online-mode aus, im Netzwerk) → Paper-Forwarding an → Proxy.
+  // Neu aufsetzen (online-mode aus, im Netzwerk) → Forwarding an → Proxy.
   void reprovisionServer(server, {
     onlineMode: false,
     networkName: network.dockerNetworkName,
     networkAlias: alias,
   })
-    .then(() => configurePaperVelocity(server, secret, true, true))
+    .then(() => configureBackendForwarding(server, network, true))
     .then(() => rewriteProxyConfig(network.id))
     .catch((err) => {
       pushConsoleLine(server.id, `Anhängen fehlgeschlagen: ${err}`);
@@ -420,6 +525,15 @@ export async function createSubserver(
   const network = await loadNetwork(networkId);
   assertAliasFree(network, input.alias);
 
+  const allowed = allowedSubserverEditions(network.proxyServer.edition);
+  if (!allowed.includes(input.edition)) {
+    throw new NetworkError(
+      422,
+      "unsupported",
+      `Dieser Proxy unterstützt nur: ${allowed.join("/")}`,
+    );
+  }
+
   const rconHostPort = input.port + 10000;
   await assertPortFree(input.port, rconHostPort);
 
@@ -445,8 +559,7 @@ export async function createSubserver(
     },
   });
 
-  const secret = decryptSecret(network.forwardingSecretEnc);
-  // Provisionieren (im Netzwerk, online-mode aus) → dann Paper-Forwarding setzen.
+  // Provisionieren (im Netzwerk, online-mode aus) → dann Forwarding setzen.
   void provisionDockerServer(server, {
     edition: input.edition,
     version: input.version,
@@ -459,13 +572,13 @@ export async function createSubserver(
     networkName: network.dockerNetworkName,
     networkAlias: input.alias,
   })
-    .then(() => configurePaperVelocity(server, secret, true, true))
+    .then(() => configureBackendForwarding(server, network, true))
     .then(() => rewriteProxyConfig(network.id))
     .catch((err) => {
       pushConsoleLine(server.id, `Subserver-Einrichtung fehlgeschlagen: ${err}`);
     });
 
-  // velocity.toml sofort aktualisieren, damit der Alias registriert ist.
+  // Proxy-Config sofort aktualisieren, damit der Alias registriert ist.
   await rewriteProxyConfig(network.id);
   return { serverId: server.id };
 }
@@ -489,11 +602,10 @@ export async function detachSubserver(
   await rewriteProxyConfig(network.id);
 
   // Auf Standalone zurücksetzen: neu aufsetzen ohne Netzwerk, online-mode wie
-  // ursprünglich, Velocity-Block in Paper deaktivieren.
-  const secret = decryptSecret(network.forwardingSecretEnc);
+  // ursprünglich, Forwarding-Konfiguration deaktivieren/entfernen.
   const cfg = parseDockerCfg(server);
   void reprovisionServer(server, { onlineMode: cfg.onlineMode })
-    .then(() => configurePaperVelocity(server, secret, false, true))
+    .then(() => configureBackendForwarding(server, network, false))
     .catch((err) => {
       pushConsoleLine(server.id, `Zurücksetzen fehlgeschlagen: ${err}`);
     });
@@ -503,7 +615,6 @@ export async function detachSubserver(
 
 export async function deleteNetwork(networkId: string): Promise<void> {
   const network = await loadNetwork(networkId);
-  const secret = decryptSecret(network.forwardingSecretEnc);
   const members = network.members;
   const dockerNet = network.dockerNetworkName;
 
@@ -523,7 +634,7 @@ export async function deleteNetwork(networkId: string): Promise<void> {
         .catch(() => {});
       const cfg = parseDockerCfg(member);
       await reprovisionServer(member, { onlineMode: cfg.onlineMode }).catch(() => {});
-      await configurePaperVelocity(member, secret, false, true).catch(() => {});
+      await configureBackendForwarding(member, network, false).catch(() => {});
     }
     await removeDockerNetwork(dockerNet);
   })().catch(() => {});

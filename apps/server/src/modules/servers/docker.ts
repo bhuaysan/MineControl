@@ -320,31 +320,32 @@ export async function putDataFiles(
   await container.putArchive(pack, { path: dir });
 }
 
-// ── Velocity-Proxy-Provisionierung ────────────────────────────────────────────
+// ── Proxy-Provisionierung (Velocity/BungeeCord) ───────────────────────────────
 
-/** Parameter zum Provisionieren eines Velocity-Proxy-Containers. */
+/** Parameter zum Provisionieren eines Proxy-Containers (Velocity oder BungeeCord). */
 export interface ProxyProvisionParams {
+  proxyEdition: "VELOCITY" | "BUNGEECORD";
+  /** Nur für Velocity ausgewertet — BungeeCord nutzt immer den neuesten stabilen Build. */
   version: string;
   memoryMb: number;
   mcPort: number;
   networkName: string;
-  /** Vollständiger Inhalt der velocity.toml. */
-  velocityToml: string;
-  /** Modern-Forwarding-Secret (Klartext). */
-  forwardingSecret: string;
+  /** Vollständiger Inhalt der Proxy-Konfiguration (velocity.toml bzw. config.yml). */
+  configContent: string;
+  /** Dateiname der Proxy-Konfiguration im Datenverzeichnis. */
+  configFilename: string;
+  /** Modern-Forwarding-Secret (Klartext) — nur für Velocity, BungeeCord braucht keines. */
+  forwardingSecret?: string;
 }
 
-/** Erstellt (ohne Start) den Velocity-Container aus dem mc-proxy-Image. */
+/** Erstellt (ohne Start) den Proxy-Container aus dem mc-proxy-Image. */
 async function createProxyContainer(
   server: Server,
   p: ProxyProvisionParams,
 ): Promise<void> {
-  // mc-proxy: kein EULA/RCON; Velocity bindet standardmäßig auf 25565.
-  const env = [
-    "TYPE=VELOCITY",
-    `VELOCITY_VERSION=${p.version}`,
-    `MEMORY=${memoryArg(p.memoryMb)}`,
-  ];
+  // mc-proxy: kein EULA/RCON; beide Proxy-Typen binden hier auf CONTAINER_MC_PORT.
+  const env = [`TYPE=${p.proxyEdition}`, `MEMORY=${memoryArg(p.memoryMb)}`];
+  if (p.proxyEdition === "VELOCITY") env.push(`VELOCITY_VERSION=${p.version}`);
   const mc = `${CONTAINER_MC_PORT}/tcp`;
   await docker.createContainer({
     name: containerName(server.id),
@@ -366,9 +367,11 @@ async function createProxyContainer(
 }
 
 /**
- * Legt einen Velocity-Proxy an: Image ziehen → Container erstellen →
- * velocity.toml + forwarding.secret ins (noch leere) Volume schreiben → starten.
- * Die Config wird vor dem ersten Start platziert, damit Velocity sie direkt nutzt.
+ * Legt einen Proxy an: Image ziehen → Container erstellen → Proxy-Konfiguration
+ * (+ bei Velocity das forwarding.secret) ins (noch leere) Volume schreiben →
+ * starten. Die Config wird vor dem ersten Start platziert, damit der Proxy sie
+ * direkt beim Boot einliest (BungeeCord braucht kein Secret — es nutzt
+ * einfaches IP-Forwarding statt Velocitys Modern Forwarding).
  */
 export async function provisionProxyServer(
   server: Server,
@@ -377,15 +380,17 @@ export async function provisionProxyServer(
   markProvisioning(server.id, true);
   await broadcastServerStatus(server.id);
   try {
-    pushConsoleLine(server.id, `» Richte Velocity-Proxy „${server.name}" ein …`);
+    const label = params.proxyEdition === "VELOCITY" ? "Velocity" : "BungeeCord";
+    pushConsoleLine(server.id, `» Richte ${label}-Proxy „${server.name}" ein …`);
     await ensureImage(server.id, PROXY_IMAGE);
     pushConsoleLine(server.id, "» Erstelle Proxy-Container …");
     await createProxyContainer(server, params);
-    pushConsoleLine(server.id, "» Schreibe velocity.toml + forwarding.secret …");
-    await putDataFiles(server.id, PROXY_DATA_DIR, [
-      { name: "velocity.toml", content: params.velocityToml },
-      { name: "forwarding.secret", content: params.forwardingSecret },
-    ]);
+    pushConsoleLine(server.id, `» Schreibe ${params.configFilename} …`);
+    const files = [{ name: params.configFilename, content: params.configContent }];
+    if (params.forwardingSecret) {
+      files.push({ name: "forwarding.secret", content: params.forwardingSecret });
+    }
+    await putDataFiles(server.id, PROXY_DATA_DIR, files);
     pushConsoleLine(server.id, "» Starte Proxy …");
     await createDockerAdapter(server).start();
     pushConsoleLine(server.id, "» Proxy gestartet.");

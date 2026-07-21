@@ -1,5 +1,10 @@
-import type { NetworkDto, ServerDto } from "@minecontrol/shared";
-import { NETWORK_ALIAS_REGEX, NETWORK_SUBSERVER_EDITIONS } from "@minecontrol/shared";
+import type { NetworkDto, NetworkProxyEdition, ServerDto } from "@minecontrol/shared";
+import {
+  BUNGEECORD_SUBSERVER_EDITIONS,
+  NETWORK_ALIAS_REGEX,
+  NETWORK_PROXY_EDITIONS,
+  NETWORK_SUBSERVER_EDITIONS,
+} from "@minecontrol/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -79,13 +84,22 @@ function CreateNetworkForm({ onDone }: { onDone: () => void }) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [proxyName, setProxyName] = useState("");
+  const [proxyEdition, setProxyEdition] = useState<NetworkProxyEdition>("VELOCITY");
   const [version, setVersion] = useState("LATEST");
   const [memoryMb, setMemoryMb] = useState(1024);
   const [port, setPort] = useState(25565);
+  const isBungee = proxyEdition === "BUNGEECORD";
 
   const mutation = useMutation({
     mutationFn: () =>
-      api.createNetwork({ name, proxyName: proxyName || name, version, memoryMb, port }),
+      api.createNetwork({
+        name,
+        proxyName: proxyName || name,
+        proxyEdition,
+        version,
+        memoryMb,
+        port,
+      }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["networks"] });
       void qc.invalidateQueries({ queryKey: ["servers"] });
@@ -122,11 +136,28 @@ function CreateNetworkForm({ onDone }: { onDone: () => void }) {
           />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-neutral-400">Velocity-Version</span>
+          <span className="mb-1 block text-neutral-400">Proxy-Software</span>
+          <select
+            value={proxyEdition}
+            onChange={(e) => setProxyEdition(e.target.value as NetworkProxyEdition)}
+            className={`w-full ${inputClass}`}
+          >
+            {NETWORK_PROXY_EDITIONS.map((ed) => (
+              <option key={ed} value={ed}>
+                {ed === "VELOCITY" ? "Velocity (auch modded Subserver)" : "BungeeCord (nur Paper/Spigot)"}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-neutral-400">
+            Velocity-Version{isBungee ? " (nicht relevant)" : ""}
+          </span>
           <input
             value={version}
+            disabled={isBungee}
             onChange={(e) => setVersion(e.target.value)}
-            className={`w-full ${inputClass}`}
+            className={`w-full ${inputClass} ${isBungee ? "opacity-50" : ""}`}
           />
         </label>
         <label className="text-sm">
@@ -196,6 +227,9 @@ function NetworkCard({ network, isAdmin }: { network: NetworkDto; isAdmin: boole
           <div className="flex items-center gap-2">
             <span className="text-lg">🕸</span>
             <h2 className="truncate text-lg font-semibold">{network.name}</h2>
+            <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400">
+              {network.proxy.edition === "BUNGEECORD" ? "BungeeCord" : "Velocity"}
+            </span>
           </div>
           <Link
             to={`/servers/${network.proxy.serverId}`}
@@ -316,7 +350,14 @@ function AddSubserverForm({
   const [mode, setMode] = useState<"attach" | "create">("attach");
   const [alias, setAlias] = useState("");
 
-  // Anhängbar: Docker-Paper/Spigot-Server, die noch keinem Netzwerk / Proxy angehören.
+  // Editionen, die dieser Proxy überhaupt unterstützt (BungeeCord: kein Modern
+  // Forwarding für modded Server, daher nur Paper/Spigot).
+  const allowedEditions =
+    network.proxy.edition === "BUNGEECORD"
+      ? BUNGEECORD_SUBSERVER_EDITIONS
+      : NETWORK_SUBSERVER_EDITIONS;
+
+  // Anhängbar: passende Docker-Server, die noch keinem Netzwerk / Proxy angehören.
   const usedIds = useMemo(() => {
     const set = new Set<string>();
     for (const net of networks ?? []) {
@@ -328,14 +369,16 @@ function AddSubserverForm({
   const eligible = (servers ?? []).filter(
     (s: ServerDto) =>
       s.type === "DOCKER" &&
-      ["PAPER", "SPIGOT"].includes(s.edition) &&
+      (allowedEditions as readonly string[]).includes(s.edition) &&
       !usedIds.has(s.id),
   );
 
   const [serverId, setServerId] = useState("");
   // create-Felder
   const [name, setName] = useState("");
-  const [edition, setEdition] = useState<(typeof NETWORK_SUBSERVER_EDITIONS)[number]>("PAPER");
+  const [edition, setEdition] = useState<(typeof NETWORK_SUBSERVER_EDITIONS)[number]>(
+    allowedEditions[0],
+  );
   const [version, setVersion] = useState("LATEST");
   const [memoryMb, setMemoryMb] = useState(2048);
   const [port, setPort] = useState(25566);
@@ -388,7 +431,7 @@ function AddSubserverForm({
 
       <label className="block text-sm">
         <span className="mb-1 block text-neutral-400">
-          Alias (Velocity-Servername, klein/kurz)
+          Alias (Proxy-Servername, klein/kurz)
         </span>
         <input
           required
@@ -404,7 +447,7 @@ function AddSubserverForm({
       {mode === "attach" ? (
         eligible.length === 0 ? (
           <p className="text-sm text-neutral-500">
-            Kein freier Paper/Spigot-Docker-Server verfügbar.
+            Kein freier passender Docker-Server verfügbar ({allowedEditions.join("/")}).
           </p>
         ) : (
           <label className="block text-sm">
@@ -423,7 +466,9 @@ function AddSubserverForm({
               ))}
             </select>
             <span className="mt-1 block text-xs text-neutral-600">
-              Der Server muss einmal gestartet worden sein (paper-global.yml).
+              Paper/Spigot-Server müssen einmal gestartet worden sein; modded Server
+              werden beim Anhängen automatisch vorbereitet (Forwarding-Mod-Install +
+              Neustarts).
             </span>
           </label>
         )
@@ -447,7 +492,7 @@ function AddSubserverForm({
               }
               className={`w-full ${inputClass}`}
             >
-              {NETWORK_SUBSERVER_EDITIONS.map((ed) => (
+              {allowedEditions.map((ed) => (
                 <option key={ed} value={ed}>
                   {ed}
                 </option>

@@ -408,11 +408,29 @@ export interface AuditEntryDto {
   timestamp: string;
 }
 
-// ── Phase 4: Velocity-Netzwerk ───────────────────────────────────────────────
+// ── Phase 4: Netzwerk (Velocity/BungeeCord-Proxy) ─────────────────────────────
 
-/** Editionen, die als Subserver hinter einem Velocity-Proxy laufen können. */
-export const NETWORK_SUBSERVER_EDITIONS = ["PAPER", "SPIGOT"] as const;
+/** Proxy-Software für ein Netzwerk. */
+export const NETWORK_PROXY_EDITIONS = ["VELOCITY", "BUNGEECORD"] as const;
+export type NetworkProxyEdition = (typeof NETWORK_PROXY_EDITIONS)[number];
+
+/**
+ * Editionen, die als Subserver hinter einem Proxy laufen können. Modded
+ * Editionen (FABRIC/FORGE/NEOFORGE) benötigen einen Velocity-Proxy — sie
+ * brauchen einen Forwarding-Kompatibilitäts-Mod, den es nur für Velocitys
+ * Modern Forwarding gibt (nicht für BungeeCords einfaches IP-Forwarding).
+ */
+export const NETWORK_SUBSERVER_EDITIONS = [
+  "PAPER",
+  "SPIGOT",
+  "FABRIC",
+  "FORGE",
+  "NEOFORGE",
+] as const;
 export type NetworkSubserverEdition = (typeof NETWORK_SUBSERVER_EDITIONS)[number];
+
+/** Editionen, die hinter einem BungeeCord-Proxy laufen können (kein Modern Forwarding). */
+export const BUNGEECORD_SUBSERVER_EDITIONS = ["PAPER", "SPIGOT"] as const;
 
 /**
  * Alias-Regeln für Subserver: Velocity-[servers]-Schlüssel und zugleich DNS-Name
@@ -430,7 +448,7 @@ export interface NetworkMemberDto {
   state: ServerState;
 }
 
-/** Ein Velocity-Netzwerk: Proxy + zugeordnete Subserver. */
+/** Ein Netzwerk: Proxy (Velocity oder BungeeCord) + zugeordnete Subserver. */
 export interface NetworkDto {
   id: string;
   name: string;
@@ -446,12 +464,14 @@ export interface NetworkDto {
   createdAt: string;
 }
 
-/** Netzwerk anlegen — provisioniert einen Velocity-Proxy als Docker-Server. */
+/** Netzwerk anlegen — provisioniert einen Velocity- oder BungeeCord-Proxy. */
 export interface CreateNetworkRequest {
   name: string;
   /** Anzeigename des Proxy-Servers. */
   proxyName: string;
-  /** Velocity-Version oder „LATEST". */
+  /** Proxy-Software; Standard Velocity (unterstützt auch modded Subserver). */
+  proxyEdition?: NetworkProxyEdition;
+  /** Versions-String; wird nur für Velocity ausgewertet (BungeeCord: immer neueste). */
   version?: string;
   memoryMb: number;
   /** Host-Port, unter dem das Netzwerk (der Proxy) erreichbar ist. */

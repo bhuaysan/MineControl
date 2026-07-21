@@ -1,4 +1,8 @@
-import { NETWORK_ALIAS_REGEX, NETWORK_SUBSERVER_EDITIONS } from "@minecontrol/shared";
+import {
+  NETWORK_ALIAS_REGEX,
+  NETWORK_PROXY_EDITIONS,
+  NETWORK_SUBSERVER_EDITIONS,
+} from "@minecontrol/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, requireRole } from "../../auth.js";
@@ -25,6 +29,7 @@ const aliasSchema = z.string().regex(NETWORK_ALIAS_REGEX, "Ungültiger Alias");
 const createNetworkSchema = z.object({
   name: z.string().min(1).max(64),
   proxyName: z.string().min(1).max(64),
+  proxyEdition: z.enum(NETWORK_PROXY_EDITIONS).default("VELOCITY"),
   version: versionSchema,
   memoryMb: z.number().int().min(256).max(16384),
   port: z.number().int().min(1024).max(65535),
