@@ -246,3 +246,38 @@ MineControl/
    gegen einen bestehenden Server
 4. Dashboard mit Live-Status
 5. Danach Phase 1 abarbeiten, dann Docker (Phase 2)
+
+---
+
+## 11. Bekannte Einschränkungen
+
+### Nebenläufige, widersprüchliche Netzwerk-Befehle auf demselben Server
+
+Container-Operationen (Reprovisionieren, Forwarding, Proxy-Restart) sind
+prozessweit per Ressourcen-Mutex serialisiert (`withResourceLock` in
+`modules/networks/service.ts`), und die Membership-Änderungen laufen über
+atomare bedingte Updates (`updateMany where networkId=…`). Dadurch sind die
+kritischen Races abgedeckt:
+
+- Doppelklick / doppeltes Attach → sauberer `409`, kein Doppel-Reprovision.
+- Doppeltes Detach → No-op statt zweitem Zurücksetzen.
+- Kein destroy/create-Race auf demselben Container mehr (kein verwaister/
+  kaputter Container aus normaler Bedienung).
+
+**Nicht abgedeckt:** Zwei *verschiedene*, widersprüchliche Befehle auf
+*demselben* Server im selben Zeitfenster (z. B. Detach aus Netz A gleichzeitig
+mit Attach an Netz B). Die Container-Operationen serialisieren zwar sauber,
+aber die endgültige Ausrichtung von DB-Zustand und tatsächlichem Container
+hängt dann von der Ausführungsreihenfolge ab → möglicher **Zustands-Mismatch**
+(DB sagt Mitglied, Container steht standalone o. ä.).
+
+- **Impact:** kein Datenverlust (Welt/Configs bleiben im Volume erhalten),
+  kein Crash, kein Security-Impact. Wiederherstellbar durch erneutes Auslösen
+  der gewünschten Operation.
+- **Wahrscheinlichkeit:** gering — erfordert mehrere gleichzeitig aktive Admins
+  oder Skript-/API-getriebene parallele Befehle. Bei Einzel-Admin-Betrieb
+  praktisch irrelevant.
+- **Vollständige Lösung (bewusst zurückgestellt):** eine Befehls-Level-
+  Statusmaschine pro Server, die widersprüchliche Befehle serialisiert oder
+  ablehnt statt sie zu verschränken. Lohnt sich erst mit Mehrbenutzer-Betrieb
+  oder API-Automatisierung.
