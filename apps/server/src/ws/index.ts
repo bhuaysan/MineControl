@@ -45,6 +45,8 @@ function hasSubscriber(topic: WsTopic): boolean {
 class ManagedStream {
   refs = 0;
   private stop: (() => void) | null = null;
+  private attaching = false;
+  private detachRequested = false;
 
   constructor(
     readonly serverId: string,
@@ -52,19 +54,35 @@ class ManagedStream {
   ) {}
 
   get attached(): boolean {
-    return this.stop !== null;
+    // Ein laufender Aufbau zählt als „attached", damit reattach() nicht parallel
+    // einen zweiten begin() startet (der dann leaken würde).
+    return this.stop !== null || this.attaching;
   }
 
   async attach(): Promise<void> {
-    if (this.stop) return;
+    if (this.stop || this.attaching) return;
+    this.attaching = true;
+    this.detachRequested = false;
     try {
-      this.stop = await this.begin(this.serverId);
+      const stop = await this.begin(this.serverId);
+      // Während des (asynchronen) Aufbaus abgemeldet? Dann die eben erzeugte
+      // Ressource (RCON-Verbindung, Timer, Log-Stream) sofort wieder freigeben —
+      // sonst bleibt sie nach einem schnellen Subscribe→Disconnect für immer offen.
+      if (this.detachRequested) {
+        stop();
+        this.stop = null;
+      } else {
+        this.stop = stop;
+      }
     } catch {
       this.stop = null; // Container (noch) nicht bereit → später erneut.
+    } finally {
+      this.attaching = false;
     }
   }
 
   detach(): void {
+    this.detachRequested = true;
     this.stop?.();
     this.stop = null;
   }
