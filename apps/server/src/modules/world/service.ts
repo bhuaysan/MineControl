@@ -1,4 +1,6 @@
-import { gunzipSync } from "node:zlib";
+import { posix } from "node:path";
+import { Readable } from "node:stream";
+import { createGunzip } from "node:zlib";
 import type { Server } from "@prisma/client";
 import * as tar from "tar-stream";
 import type { PregenResponse, WorldDto, WorldListResponse } from "@minecontrol/shared";
@@ -13,8 +15,33 @@ import { broadcastServerStatus, reattachServerStreams } from "../../ws/index.js"
 /** UID/GID der itzg-Container (Dateien müssen dem Container-User gehören). */
 const CONTAINER_UID = 1000;
 
+/** Obergrenze für die entpackte Archivgröße (Schutz vor Gzip-/Tar-Bomben). */
+const MAX_UNCOMPRESSED = 2 * 1024 * 1024 * 1024; // 2 GiB
+
 /** Editionen, die als Welt-Server mit Plugins/Mods (inkl. Chunky) laufen. */
 const MODDABLE = ["PAPER", "SPIGOT", "FABRIC", "FORGE", "NEOFORGE"];
+
+/**
+ * Serialisiert mutierende Welt-Operationen pro Server. Verhindert TOCTOU-Races
+ * zwischen switch/create/delete/upload (z. B. Löschen einer Welt, die parallel
+ * zur aktiven gemacht wird). In-Memory-Promise-Kette je server.id.
+ */
+const serverLocks = new Map<string, Promise<unknown>>();
+
+function withServerLock<T>(serverId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = serverLocks.get(serverId) ?? Promise.resolve();
+  // fn läuft unabhängig davon, ob der Vorgänger erfüllt oder verworfen wurde.
+  const next = prev.then(fn, fn);
+  // Kette weiterführen, ohne dass ein Fehler nachfolgende Operationen blockiert.
+  serverLocks.set(
+    serverId,
+    next.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return next;
+}
 
 /** Fehler mit HTTP-Status für die Route-Schicht. */
 export class WorldError extends Error {
@@ -120,13 +147,15 @@ export async function listWorlds(server: Server): Promise<WorldListResponse> {
 // ── Wechseln / Erstellen / Löschen ─────────────────────────────────────────────
 
 export async function switchWorld(server: Server, name: string): Promise<void> {
-  ensureDocker(server);
-  assertName(name);
-  if (!(await worldExists(server, name))) {
-    throw new WorldError(404, "not_found", "Welt nicht gefunden");
-  }
-  await writeServerProperties(server, { "level-name": name });
-  await restart(server);
+  return withServerLock(server.id, async () => {
+    ensureDocker(server);
+    assertName(name);
+    if (!(await worldExists(server, name))) {
+      throw new WorldError(404, "not_found", "Welt nicht gefunden");
+    }
+    await writeServerProperties(server, { "level-name": name });
+    await restart(server);
+  });
 }
 
 export async function createWorld(
@@ -134,63 +163,129 @@ export async function createWorld(
   name: string,
   seed?: string,
 ): Promise<void> {
-  ensureDocker(server);
-  assertName(name);
-  if (await worldExists(server, name)) {
-    throw new WorldError(409, "exists", "Welt existiert bereits");
-  }
-  const changes: Record<string, string> = { "level-name": name };
-  // Seed setzen (leer = zufällig); wirkt beim Generieren der neuen Welt.
-  changes["level-seed"] = seed ?? "";
-  await writeServerProperties(server, changes);
-  await restart(server);
+  return withServerLock(server.id, async () => {
+    ensureDocker(server);
+    assertName(name);
+    if (await worldExists(server, name)) {
+      throw new WorldError(409, "exists", "Welt existiert bereits");
+    }
+    const changes: Record<string, string> = { "level-name": name };
+    // Seed setzen (leer = zufällig); wirkt beim Generieren der neuen Welt.
+    changes["level-seed"] = seed ?? "";
+    await writeServerProperties(server, changes);
+    await restart(server);
+  });
 }
 
 export async function deleteWorld(server: Server, name: string): Promise<void> {
-  ensureDocker(server);
-  assertName(name);
-  const active = await activeLevel(server);
-  if (name === active) {
-    throw new WorldError(409, "active", "Die aktive Welt kann nicht gelöscht werden");
-  }
-  const adapter = createDockerAdapter(server);
-  // Basiswelt + Nether/End-Companions entfernen (feste Segmente dank assertName).
-  for (const w of [name, `${name}_nether`, `${name}_the_end`]) {
-    try {
-      await adapter.exec(["rm", "-rf", `/data/${w}`]);
-    } catch (err) {
-      throw mapExecError(err);
+  return withServerLock(server.id, async () => {
+    ensureDocker(server);
+    assertName(name);
+    const active = await activeLevel(server);
+    // Basiswelt + Nether/End-Companions entfernen (feste Segmente dank assertName).
+    const targets = [name, `${name}_nether`, `${name}_the_end`];
+    // Guard über ALLE Ziele: auch wenn die aktive Welt eine abgeleitete
+    // Dimension ist (z. B. level-name = "foo_nether"), darf nicht gelöscht werden.
+    if (targets.includes(active)) {
+      throw new WorldError(
+        409,
+        "active",
+        "Die aktive Welt (oder ihre Dimension) kann nicht gelöscht werden",
+      );
     }
-  }
+    const adapter = createDockerAdapter(server);
+    for (const w of targets) {
+      try {
+        await adapter.exec(["rm", "-rf", `/data/${w}`]);
+      } catch (err) {
+        throw mapExecError(err);
+      }
+    }
+  });
 }
 
 // ── Upload (.tar.gz) ────────────────────────────────────────────────────────────
 
-/** Entpackt ein tar (Buffer), benennt den obersten Ordner in `name` um, packt neu. */
-function renameTarRoot(tarBuf: Buffer, name: string): Promise<Buffer> {
+/**
+ * Streamt ein .tar.gz (Buffer), benennt den obersten Ordner in `name` um und
+ * packt neu. Härtungen:
+ *  - Streaming-gunzip + Größenobergrenze → Schutz vor Gzip-/Tar-Bomben.
+ *  - Pfad-Normalisierung: jeder Eintrag muss im Ziel-Segment `name` bleiben
+ *    (kein Ausbruch via `..` / Tar-Slip beim späteren putArchive nach /data).
+ *  - Nur reguläre Dateien und Verzeichnisse; Symlinks/Hardlinks werden verworfen.
+ */
+function repackWorld(gzBuffer: Buffer, name: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
+    const gunzip = createGunzip();
     const extract = tar.extract();
     const pack = tar.pack();
     const chunks: Buffer[] = [];
     let sawLevel = false;
+    let total = 0;
+    let failed = false;
+
+    const bail = (err: unknown): void => {
+      if (failed) return;
+      failed = true;
+      gunzip.destroy();
+      extract.destroy();
+      pack.destroy();
+      reject(err);
+    };
+
+    gunzip.on("error", () =>
+      bail(new WorldError(400, "bad_archive", "Kein gültiges .tar.gz-Archiv")),
+    );
 
     pack.on("data", (c: Buffer) => chunks.push(c));
-    pack.on("end", () => resolve(Buffer.concat(chunks)));
-    pack.on("error", reject);
+    pack.on("end", () => {
+      if (!failed) resolve(Buffer.concat(chunks));
+    });
+    pack.on("error", bail);
 
     extract.on("entry", (header, stream, next) => {
+      if (failed) {
+        stream.resume();
+        return;
+      }
+      // Nur Dateien/Verzeichnisse übernehmen; Symlinks/Hardlinks/Devices ignorieren.
+      if (header.type !== "file" && header.type !== "directory") {
+        stream.resume();
+        stream.on("end", next);
+        return;
+      }
+
+      // Obersten Ordner durch `name` ersetzen, Rest des Pfads beibehalten …
+      const slash = header.name.indexOf("/");
+      const rest = slash === -1 ? "" : header.name.slice(slash);
+      // … und danach den Gesamtpfad normalisieren + einschließen (Tar-Slip-Schutz).
+      const normalized = posix.normalize(`${name}${rest}`);
+      if (normalized !== name && !normalized.startsWith(`${name}/`)) {
+        bail(new WorldError(400, "tar_slip", "Ungültiger Pfad im Archiv"));
+        stream.resume();
+        return;
+      }
+      const finalName =
+        header.type === "directory" ? `${normalized}/` : normalized;
+      if (/\/level\.dat$/.test(finalName)) sawLevel = true;
+
       const bufs: Buffer[] = [];
-      stream.on("data", (c: Buffer) => bufs.push(c));
+      stream.on("data", (c: Buffer) => {
+        total += c.length;
+        if (total > MAX_UNCOMPRESSED) {
+          bail(new WorldError(413, "too_large", "Entpacktes Archiv zu groß"));
+        } else {
+          bufs.push(c);
+        }
+      });
+      stream.on("error", bail);
       stream.on("end", () => {
-        const slash = header.name.indexOf("/");
-        const rest = slash === -1 ? "" : header.name.slice(slash);
-        const newName = `${name}${rest || (header.type === "directory" ? "/" : "")}`;
-        if (/\/level\.dat$/.test(newName)) sawLevel = true;
+        if (failed) return;
         const content =
           header.type === "directory" ? Buffer.alloc(0) : Buffer.concat(bufs);
         pack.entry(
           {
-            name: newName,
+            name: finalName,
             type: header.type,
             mode: header.mode,
             mtime: header.mtime,
@@ -198,20 +293,23 @@ function renameTarRoot(tarBuf: Buffer, name: string): Promise<Buffer> {
             gid: CONTAINER_UID,
           },
           content,
-          (err) => (err ? reject(err) : next()),
+          (err) => (err ? bail(err) : next()),
         );
       });
-      stream.resume();
     });
     extract.on("finish", () => {
+      if (failed) return;
       if (!sawLevel) {
-        reject(new WorldError(400, "no_level", "Archiv enthält keine level.dat"));
+        bail(new WorldError(400, "no_level", "Archiv enthält keine level.dat"));
         return;
       }
       pack.finalize();
     });
-    extract.on("error", reject);
-    extract.end(tarBuf);
+    extract.on("error", () =>
+      bail(new WorldError(400, "bad_archive", "Beschädigtes Archiv")),
+    );
+
+    Readable.from(gzBuffer).pipe(gunzip).pipe(extract);
   });
 }
 
@@ -220,20 +318,16 @@ export async function uploadWorld(
   name: string,
   gzBuffer: Buffer,
 ): Promise<void> {
-  ensureDocker(server);
-  assertName(name);
-  if (await worldExists(server, name)) {
-    throw new WorldError(409, "exists", "Welt existiert bereits");
-  }
-  let tarBuf: Buffer;
-  try {
-    tarBuf = gunzipSync(gzBuffer);
-  } catch {
-    throw new WorldError(400, "bad_archive", "Kein gültiges .tar.gz-Archiv");
-  }
-  const repacked = await renameTarRoot(tarBuf, name);
-  const container = docker.getContainer(containerName(server.id));
-  await container.putArchive(repacked, { path: "/data" });
+  return withServerLock(server.id, async () => {
+    ensureDocker(server);
+    assertName(name);
+    if (await worldExists(server, name)) {
+      throw new WorldError(409, "exists", "Welt existiert bereits");
+    }
+    const repacked = await repackWorld(gzBuffer, name);
+    const container = docker.getContainer(containerName(server.id));
+    await container.putArchive(repacked, { path: "/data" });
+  });
 }
 
 // ── Pregeneration (Chunky) ───────────────────────────────────────────────────
