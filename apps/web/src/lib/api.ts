@@ -30,6 +30,7 @@ import type {
   PregenRequest,
   PregenResponse,
   WorldListResponse,
+  NotificationChannel,
   NotificationSettingsDto,
   OnlinePlayer,
   PlayerListItemDto,
@@ -375,8 +376,11 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
-  testNotification: () =>
-    request<{ ok: true }>("/api/settings/notifications/test", { method: "POST" }),
+  testNotification: (channel: NotificationChannel) =>
+    request<{ ok: true }>("/api/settings/notifications/test", {
+      method: "POST",
+      body: JSON.stringify({ channel }),
+    }),
 
   // Spieler-Profile
   listPlayers: () => request<PlayerListItemDto[]>("/api/players"),

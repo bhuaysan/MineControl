@@ -281,6 +281,14 @@ export const MAX_EDITABLE_FILE_BYTES = 1_048_576;
 export interface NotificationSettingsDto {
   /** Webhook-URL wird nie zurückgegeben — nur, ob eine gesetzt ist. */
   discordConfigured: boolean;
+  /** SMTP-Passwort wird nie zurückgegeben — nur, ob eine vollständige Konfiguration gesetzt ist. */
+  emailConfigured: boolean;
+  emailSmtpHost: string;
+  emailSmtpPort: number;
+  emailSmtpSecure: boolean;
+  emailSmtpUser: string;
+  emailFrom: string;
+  emailTo: string;
   notifyServerDown: boolean;
   notifyBackupFailed: boolean;
   notifyTaskFailed: boolean;
@@ -289,10 +297,21 @@ export interface NotificationSettingsDto {
 export interface UpdateNotificationSettingsRequest {
   /** Leerer String löscht die Webhook-URL. `undefined` lässt sie unverändert. */
   discordWebhookUrl?: string;
+  emailSmtpHost?: string;
+  emailSmtpPort?: number;
+  emailSmtpSecure?: boolean;
+  emailSmtpUser?: string;
+  /** `undefined` lässt ein vorhandenes Passwort unverändert. */
+  emailSmtpPassword?: string;
+  emailFrom?: string;
+  /** Leerer String löscht die gesamte E-Mail-Konfiguration. `undefined` lässt sie unverändert. */
+  emailTo?: string;
   notifyServerDown?: boolean;
   notifyBackupFailed?: boolean;
   notifyTaskFailed?: boolean;
 }
+
+export type NotificationChannel = "discord" | "email";
 
 // ── Phase 4: API-Tokens ──────────────────────────────────────────────────────
 

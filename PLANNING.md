@@ -160,7 +160,7 @@ ScheduledTask id, serverId, cron, action (RESTART|COMMAND|BACKUP), payload
 - [x] Backups: manuell + Zeitplan (Cron), Retention, Restore per Klick
 - [x] Geplante Tasks: automatische Restarts, wiederkehrende Befehle (z.B. Broadcast)
 - [x] Metrik-Historie: Spielerzahlen, RAM, CPU, **TPS** über Zeit (Graphen)
-- [x] Benachrichtigungen: Discord-Webhook (Server down, Backup/Task fehlgeschlagen) — *E-Mail offen*
+- [x] Benachrichtigungen: Discord-Webhook + E-Mail (SMTP) (Server down, Backup/Task fehlgeschlagen)
 - [x] Datei-Manager für Docker-Server (Volumes browsen, Dateien editieren/hochladen)
 - [x] Spieler-Profile: Playtime, Sessions-Historie, Admin-Notizen, Ban-Historie
 
