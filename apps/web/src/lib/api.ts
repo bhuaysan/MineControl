@@ -60,10 +60,17 @@ export class ApiRequestError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // Content-Type nur setzen, wenn es tatsächlich einen JSON-Body gibt. Sonst
+  // lehnt Fastify body-lose Requests (DELETE, body-lose POSTs) ab:
+  // „Body cannot be empty when content-type is set to 'application/json'".
+  const hasBody = init?.body != null;
   const res = await fetch(path, {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...init?.headers },
     ...init,
+    headers: {
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+      ...init?.headers,
+    },
   });
   if (!res.ok) {
     let message = res.statusText;
