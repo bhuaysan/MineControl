@@ -163,13 +163,20 @@ export function ServerDetailPage() {
           {can("ADMIN") && (
             <button
               onClick={onDelete}
-              className="rounded-md border border-status-error/40 px-3 py-1.5 text-sm text-status-error hover:bg-status-error/10"
+              disabled={deleteMutation.isPending}
+              className="rounded-md border border-status-error/40 px-3 py-1.5 text-sm text-status-error hover:bg-status-error/10 disabled:opacity-50"
             >
-              Entfernen
+              {deleteMutation.isPending ? "Entferne…" : "Entfernen"}
             </button>
           )}
         </div>
       </div>
+
+      {deleteMutation.isError && (
+        <p className="mb-4 rounded-md border border-status-error/40 bg-status-error/10 px-3 py-2 text-sm text-status-error">
+          Entfernen fehlgeschlagen: {(deleteMutation.error as Error).message}
+        </p>
+      )}
 
       <div className="mb-4 flex gap-1 border-b border-neutral-800">
         {tabs.map(([key, label]) => (
