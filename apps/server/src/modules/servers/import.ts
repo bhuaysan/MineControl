@@ -3,10 +3,7 @@ import { posix } from "node:path";
 import { createGunzip } from "node:zlib";
 import * as tar from "tar-stream";
 import { config } from "../../config.js";
-import { containerName, docker } from "../../adapters/dockerClient.js";
-
-/** UID/GID der itzg-Container — importierte Dateien müssen dem Container-User gehören. */
-const CONTAINER_UID = 1000;
+import { CONTAINER_UID, containerName, docker } from "../../adapters/dockerClient.js";
 
 /** Fehler mit HTTP-Status für die Route-/Provisioning-Schicht. */
 export class ImportError extends Error {
