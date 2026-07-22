@@ -77,7 +77,25 @@ model Server {
   metrics   MetricSample[]
   backups   Backup[]
   tasks     ScheduledTask[]
-  proxyOf   Network?        @relation("NetworkProxy")
+  proxyOf   Network?          @relation("NetworkProxy")
+  plugins   InstalledPlugin[]
+}
+
+// Phase 4 — Herkunft installierter Plugins/Mods (für Update-Check). Die Jar liegt
+// im Container-Volume; diese Zeile merkt sich, WOHER sie kam. Nur Modrinth-Einträge
+// sind aktualisierbar (Upload/URL haben keine Update-Quelle).
+model InstalledPlugin {
+  id                String   @id @default(cuid())
+  server            Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  serverId          String
+  fileName          String // z. B. "EssentialsX-2.20.jar"
+  source            String // "modrinth" | "upload" | "url"
+  modrinthProjectId String?
+  modrinthVersionId String?
+  versionNumber     String?
+  createdAt         DateTime @default(now())
+
+  @@unique([serverId, fileName])
 }
 
 // Phase 4 — Velocity-Netzwerk: ein Proxy-Server + N Subserver als Gruppe.

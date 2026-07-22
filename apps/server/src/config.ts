@@ -43,6 +43,8 @@ export const config = {
    * (Schutz vor Gzip-/Tar-Bomben). Default 10 GiB.
    */
   importMaxBytes: Number(optional("IMPORT_MAX_MB", "10240")) * 1024 * 1024,
+  /** Obergrenze (Bytes) für eigene Plugin-/Mod-Jars (Upload + URL-Download). Default 200 MB. */
+  modsMaxBytes: Number(optional("MODS_MAX_MB", "200")) * 1024 * 1024,
   sessionSecret,
   encryptionKey: Buffer.from(encryptionKeyHex, "hex"),
   /**

@@ -17,6 +17,9 @@ import type {
   LoginRequest,
   MeResponse,
   InstalledModDto,
+  PluginConfigFileDto,
+  PluginConfigListDto,
+  PluginUpdateDto,
   LpGroupDetailDto,
   LpGroupSummaryDto,
   LpSetMetaRequest,
@@ -333,6 +336,56 @@ export const api = {
     request<{ ok: true }>(
       `/api/servers/${id}/mods?file=${encodeURIComponent(file)}`,
       { method: "DELETE" },
+    ),
+  installModFromUrl: (id: string, url: string) =>
+    request<{ filename: string }>(`/api/servers/${id}/mods/from-url`, {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
+  uploadMod: async (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`/api/servers/${id}/mods/upload`, {
+      method: "POST",
+      credentials: "include",
+      body: form,
+    });
+    if (!res.ok) {
+      let message = res.statusText;
+      try {
+        const body = (await res.json()) as { message?: string };
+        if (body.message) message = body.message;
+      } catch {
+        /* kein JSON */
+      }
+      throw new ApiRequestError(res.status, message);
+    }
+    return (await res.json()) as { filename: string };
+  },
+  toggleMod: (id: string, file: string, enabled: boolean) =>
+    request<{ ok: true }>(`/api/servers/${id}/mods/toggle`, {
+      method: "POST",
+      body: JSON.stringify({ file, enabled }),
+    }),
+  modUpdates: (id: string) =>
+    request<PluginUpdateDto[]>(`/api/servers/${id}/mods/updates`),
+  updateMod: (id: string, file: string) =>
+    request<{ filename: string }>(`/api/servers/${id}/mods/update`, {
+      method: "POST",
+      body: JSON.stringify({ file }),
+    }),
+  pluginConfig: (id: string, file: string) =>
+    request<PluginConfigListDto>(
+      `/api/servers/${id}/mods/config?file=${encodeURIComponent(file)}`,
+    ),
+  readPluginConfig: (id: string, file: string, path: string) =>
+    request<PluginConfigFileDto>(
+      `/api/servers/${id}/mods/config/file?file=${encodeURIComponent(file)}&path=${encodeURIComponent(path)}`,
+    ),
+  writePluginConfig: (id: string, file: string, path: string, content: string) =>
+    request<{ ok: true }>(
+      `/api/servers/${id}/mods/config/file?file=${encodeURIComponent(file)}&path=${encodeURIComponent(path)}`,
+      { method: "PUT", body: JSON.stringify({ content }) },
     ),
 
   // LuckPerms (Berechtigungen)

@@ -382,6 +382,10 @@ export interface ModSearchHitDto {
 export interface InstalledModDto {
   filename: string;
   sizeBytes: number;
+  /** false, wenn die Datei als `.jar.disabled` deaktiviert ist. */
+  enabled: boolean;
+  /** Herkunft, falls bekannt: "modrinth" | "upload" | "url". */
+  source?: string;
 }
 
 export interface InstallModRequest {
@@ -392,6 +396,39 @@ export interface InstallModRequest {
 
 export interface InstallModResponse {
   filename: string;
+}
+
+/** Installation einer eigenen Plugin-/Mod-Jar von einer URL. */
+export interface InstallFromUrlRequest {
+  url: string;
+}
+
+/** Plugin/Mod (de)aktivieren (Umbenennen .jar ↔ .jar.disabled). */
+export interface ToggleModRequest {
+  file: string;
+  enabled: boolean;
+}
+
+/** Update-Status eines Modrinth-installierten Plugins. */
+export interface PluginUpdateDto {
+  fileName: string;
+  currentVersion?: string;
+  latestVersion?: string;
+  updateAvailable: boolean;
+}
+
+/** Config-Ordner eines Plugins + enthaltene Dateien. */
+export interface PluginConfigListDto {
+  /** Ordner unter /data (z. B. "/plugins/EssentialsX"); null, wenn nicht ermittelbar. */
+  configDir: string | null;
+  pluginName?: string;
+  entries: FileEntryDto[];
+}
+
+/** Inhalt einer Plugin-Config-Datei. */
+export interface PluginConfigFileDto {
+  path: string;
+  content: string;
 }
 
 // ── Phase 3: Spieler-Profile ─────────────────────────────────────────────────
