@@ -5,16 +5,22 @@ nacheinander in einer langen Session) — jeder Prompt ist in sich
 abgeschlossen und braucht keinen Bezug zu den anderen. Das hält den Kontext
 pro Session klein und spart Tokens.
 
-Punkt 5 (E-Mail) zuerst behandeln — betrifft den zuletzt (von Sonnet)
-geschriebenen, noch ungeprüften Code.
-
 > **Update:** Eine vorherige Opus-4.8-Session hat die ursprünglichen Punkte
 > 1–4 (Pfad-Traversal/Symlinks, Welt-Upload/Löschschutz, Netzwerk-Races,
 > WS-Ref-Counting-Leak) bereits behoben — siehe Commits `55c90ea`, `d17ff00`,
 > `b064e87`, `93ea0ea` und die neue "Bekannte Einschränkungen" in
-> PLANNING.md §11. Nicht erneut darauf ansetzen, siehe stattdessen Punkt 1
-> unten (verbleibender Rest von RCON-Fehlerbehandlung) und Punkt 2 (bewusst
-> zurückgestellte Lücke aus §11, falls Ben Mehrbenutzer-/API-Betrieb plant).
+> PLANNING.md §11.
+>
+> **Update 2 (Commit `47737c5`):** Punkte **4, 5 und 6 unten sind erledigt**
+> (Auth/2FA-Timing+Replay, E-Mail-Notifs-Selbstprüfung, Docker-Lifecycle).
+> Behoben: TOTP-Replay (neues Feld `totpLastStep`), TOCTOU beim
+> Letzter-Admin-Schutz, fehlendes SMTP-Timeout + Transport-Pooling +
+> Anzeigenamen-Validierung, putArchive-root-Owner in files/mods-Service,
+> verschluckte Docker-Teardown-Fehler. **Offen bleiben nur noch Punkt 1**
+> (verbleibender Rest RCON-Fehlerbehandlung — ephemere Verbindungen im
+> 60s-Sampler) **und Punkt 2** (bewusst zurückgestellte Netzwerk-Lücke aus
+> §11, nur relevant bei Mehrbenutzer-/API-Betrieb) **und Punkt 3**
+> (LuckPerms-Export-Cleanup/Nebenläufigkeit).
 
 ---
 
@@ -64,7 +70,7 @@ erzeugen? (3) Wird der JSON-Parse-Fehlerfall (kaputtes/unvollständiges Export
 durch Server-Crash mitten im Export) behandelt oder crasht die Route?
 ```
 
-## 4. Auth, 2FA, API-Tokens: Timing & Replay
+## 4. Auth, 2FA, API-Tokens: Timing & Replay — ✅ ERLEDIGT (47737c5)
 
 ```
 Prüfe apps/server/src/modules/twofa/totp.ts, apps/server/src/modules/auth/
@@ -78,7 +84,7 @@ Rollenänderung (nicht nur Löschen) — kann man den letzten Admin auf VIEWER
 downgraden?
 ```
 
-## 5. Neues Feature — E-Mail-Benachrichtigungen (Selbstprüfung der letzten Session)
+## 5. Neues Feature — E-Mail-Benachrichtigungen (Selbstprüfung der letzten Session) — ✅ ERLEDIGT (47737c5)
 
 ```
 Review apps/server/src/modules/notifications/service.ts und routes.ts,
@@ -97,7 +103,7 @@ Speichern dann grundlos fehl? (4) Timeout: postToDiscord hat ein
 den Aufrufer (z. B. den Metrik-Sampler) blockieren?
 ```
 
-## 6. Docker-Adapter: Container-Lifecycle & Volume-Löschung
+## 6. Docker-Adapter: Container-Lifecycle & Volume-Löschung — ✅ ERLEDIGT (47737c5)
 
 ```
 Prüfe apps/server/src/adapters/docker.ts und
