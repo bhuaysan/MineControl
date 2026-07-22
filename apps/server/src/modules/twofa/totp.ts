@@ -68,18 +68,26 @@ export function currentToken(secretB32: string, atMs = Date.now()): string {
   return hotp(secretB32, Math.floor(atMs / 1000 / STEP_SECONDS));
 }
 
-/** Prüft einen Code gegen das Secret (±`window` Schritte Toleranz). */
-export function verifyToken(secretB32: string, token: string, window = 1): boolean {
+/**
+ * Prüft einen Code gegen das Secret (±`window` Schritte Toleranz) und liefert
+ * bei Erfolg den akzeptierten Zeitschritt (Counter), sonst `null`. Der Counter
+ * erlaubt dem Aufrufer, einen bereits verbrauchten Code abzulehnen (Replay).
+ */
+export function verifyToken(
+  secretB32: string,
+  token: string,
+  window = 1,
+): number | null {
   const cleaned = token.replace(/\s/g, "");
-  if (!/^\d{6}$/.test(cleaned)) return false;
+  if (!/^\d{6}$/.test(cleaned)) return null;
   const counter = Math.floor(Date.now() / 1000 / STEP_SECONDS);
   for (let i = -window; i <= window; i++) {
     const expected = hotp(secretB32, counter + i);
     const a = Buffer.from(expected);
     const b = Buffer.from(cleaned);
-    if (a.length === b.length && timingSafeEqual(a, b)) return true;
+    if (a.length === b.length && timingSafeEqual(a, b)) return counter + i;
   }
-  return false;
+  return null;
 }
 
 /** otpauth://-URI für QR-Code / manuellen Import. */

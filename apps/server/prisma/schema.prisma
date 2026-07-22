@@ -31,6 +31,9 @@ model User {
   // 2FA (TOTP) — Secret verschlüsselt; erst nach Bestätigung aktiv.
   totpSecretEnc String?
   totpEnabled   Boolean   @default(false)
+  // Zuletzt akzeptierter TOTP-Zeitschritt — verhindert Replay eines Codes
+  // innerhalb desselben (±window) Zeitfensters.
+  totpLastStep  Int?
   auditLogs    AuditLog[]
   apiTokens    ApiToken[]
 }

@@ -32,6 +32,13 @@ export const PROXY_DATA_DIR = "/server";
 export const CONTAINER_MC_PORT = 25565;
 export const CONTAINER_RCON_PORT = 25575;
 
+/**
+ * Standard-UID/GID der itzg-Images (minecraft-server & mc-proxy laufen als 1000).
+ * Per putArchive geschriebene Dateien müssen diesem User gehören — sonst kann der
+ * Container sie beim (Neu-)Start nicht überschreiben (AccessDenied-Crashloop).
+ */
+export const CONTAINER_UID = 1000;
+
 /** Name des user-defined Bridge-Netzwerks einer Velocity-Netzwerk-Gruppe. */
 export function networkName(networkId: string): string {
   return `minecontrol_net_${networkId}`;

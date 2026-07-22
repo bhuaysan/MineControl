@@ -515,7 +515,19 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
       await deleteAllBackups(id);
       if (server.type === "DOCKER") {
         detachServerStreams(server.id);
-        await destroyDockerServer(server, keepWorld === "true");
+        try {
+          await destroyDockerServer(server, keepWorld === "true");
+        } catch (err) {
+          // Teardown fehlgeschlagen → DB-Zeile NICHT löschen, damit kein
+          // verwaister Container/Volume ohne Eintrag zurückbleibt und ein
+          // erneuter Löschversuch möglich bleibt.
+          request.log.error({ err, serverId: id }, "Docker-Teardown fehlgeschlagen");
+          return reply.code(502).send({
+            error: "docker_teardown_failed",
+            message:
+              "Container/Volume konnte nicht entfernt werden — Server wurde nicht gelöscht. Bitte erneut versuchen.",
+          });
+        }
       }
       await prisma.server.delete({ where: { id } });
       await recordAudit({

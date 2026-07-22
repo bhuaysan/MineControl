@@ -39,10 +39,8 @@ function toDto(user: {
   };
 }
 
-/** Anzahl der Admins — für die „letzter Admin"-Schutzregeln. */
-function countAdmins(): Promise<number> {
-  return prisma.user.count({ where: { role: "ADMIN" } });
-}
+/** Signalisiert, dass eine Aktion den letzten Admin entfernen würde. */
+class LastAdminError extends Error {}
 
 export async function userRoutes(app: FastifyInstance): Promise<void> {
   // Gesamte Benutzerverwaltung nur für Admins.
@@ -92,27 +90,39 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(404).send({ error: "not_found", message: "Benutzer nicht gefunden" });
     }
 
-    // Den letzten Admin nicht degradieren.
-    if (
-      parsed.data.role &&
+    const passwordHash = parsed.data.password
+      ? await argon2.hash(parsed.data.password)
+      : undefined;
+    const degradesAdmin =
+      Boolean(parsed.data.role) &&
       parsed.data.role !== "ADMIN" &&
-      target.role === "ADMIN" &&
-      (await countAdmins()) <= 1
-    ) {
-      return reply
-        .code(409)
-        .send({ error: "conflict", message: "Der letzte Admin kann nicht degradiert werden" });
-    }
+      target.role === "ADMIN";
 
-    const updated = await prisma.user.update({
-      where: { id },
-      data: {
-        ...(parsed.data.role ? { role: parsed.data.role } : {}),
-        ...(parsed.data.password
-          ? { passwordHash: await argon2.hash(parsed.data.password) }
-          : {}),
-      },
-    });
+    // Prüfung (Admin-Zählung) + Update atomar: sonst könnten zwei parallele
+    // Downgrade-Requests beide „noch 2 Admins" sehen und in Summe 0 Admins
+    // hinterlassen (TOCTOU-Self-Lockout).
+    let updated;
+    try {
+      updated = await prisma.$transaction(async (tx) => {
+        if (degradesAdmin && (await tx.user.count({ where: { role: "ADMIN" } })) <= 1) {
+          throw new LastAdminError();
+        }
+        return tx.user.update({
+          where: { id },
+          data: {
+            ...(parsed.data.role ? { role: parsed.data.role } : {}),
+            ...(passwordHash ? { passwordHash } : {}),
+          },
+        });
+      });
+    } catch (err) {
+      if (err instanceof LastAdminError) {
+        return reply
+          .code(409)
+          .send({ error: "conflict", message: "Der letzte Admin kann nicht degradiert werden" });
+      }
+      throw err;
+    }
     await recordAudit({
       userId: request.user?.id,
       action: "user.update",
@@ -136,13 +146,26 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     if (!target) {
       return reply.code(404).send({ error: "not_found", message: "Benutzer nicht gefunden" });
     }
-    if (target.role === "ADMIN" && (await countAdmins()) <= 1) {
-      return reply
-        .code(409)
-        .send({ error: "conflict", message: "Der letzte Admin kann nicht gelöscht werden" });
-    }
 
-    await prisma.user.delete({ where: { id } });
+    // Prüfung + Löschung atomar (siehe PATCH: TOCTOU-Self-Lockout vermeiden).
+    try {
+      await prisma.$transaction(async (tx) => {
+        if (
+          target.role === "ADMIN" &&
+          (await tx.user.count({ where: { role: "ADMIN" } })) <= 1
+        ) {
+          throw new LastAdminError();
+        }
+        await tx.user.delete({ where: { id } });
+      });
+    } catch (err) {
+      if (err instanceof LastAdminError) {
+        return reply
+          .code(409)
+          .send({ error: "conflict", message: "Der letzte Admin kann nicht gelöscht werden" });
+      }
+      throw err;
+    }
     await recordAudit({
       userId: request.user?.id,
       action: "user.delete",

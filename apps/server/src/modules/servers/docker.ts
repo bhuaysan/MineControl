@@ -8,6 +8,7 @@ import { importArchiveIntoVolume } from "./import.js";
 import {
   CONTAINER_MC_PORT,
   CONTAINER_RCON_PORT,
+  CONTAINER_UID,
   MC_IMAGE,
   PROXY_DATA_DIR,
   PROXY_IMAGE,
@@ -47,9 +48,6 @@ export interface ProvisionParams {
    */
   importFilePath?: string;
 }
-
-/** Standard-UID/GID der itzg-Images (minecraft-server & mc-proxy laufen als 1000). */
-const CONTAINER_UID = 1000;
 
 /** MB → itzg-Speicherangabe („2G" bzw. „1536M"). */
 function memoryArg(mb: number): string {
@@ -226,14 +224,19 @@ export async function destroyDockerServer(
   const container = docker.getContainer(containerName(server.id));
   try {
     await container.remove({ force: true, v: false });
-  } catch {
-    /* Container existiert nicht mehr — ok. */
+  } catch (err) {
+    // 404 = existiert nicht mehr → ok. Jeden anderen Fehler (Daemon-Störung
+    // etc.) durchreichen, damit der Aufrufer die DB-Zeile NICHT löscht und kein
+    // verwaister Container ohne DB-Eintrag zurückbleibt (Port-Konflikt-Gefahr).
+    if ((err as { statusCode?: number }).statusCode !== 404) throw err;
   }
   if (!keepWorld) {
     try {
       await docker.getVolume(dataVolumeName(server.id)).remove();
-    } catch {
-      /* Volume existiert nicht — ok. */
+    } catch (err) {
+      // 404 = Volume existiert nicht → ok. Anderes (z. B. 409 „volume in use")
+      // durchreichen statt schlucken.
+      if ((err as { statusCode?: number }).statusCode !== 404) throw err;
     }
   }
 }

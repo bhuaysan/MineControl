@@ -8,6 +8,20 @@ import {
   updateNotificationSettings,
 } from "./service.js";
 
+/**
+ * Prüft eine einzelne E-Mail-Angabe, die auch die Anzeigenamen-Form
+ * `Name <addr@host>` haben darf (von SMTP-Servern/Nodemailer akzeptiert).
+ * Der reine Adressteil in spitzen Klammern wird gegen `z.string().email()`
+ * geprüft; ohne Klammern der gesamte String.
+ */
+function isValidMailbox(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed) return false;
+  const angle = trimmed.match(/<([^>]+)>\s*$/);
+  const address = angle ? angle[1]!.trim() : trimmed;
+  return z.string().email().safeParse(address).success;
+}
+
 const updateSchema = z.object({
   discordWebhookUrl: z
     .string()
@@ -20,11 +34,14 @@ const updateSchema = z.object({
   emailSmtpSecure: z.boolean().optional(),
   emailSmtpUser: z.string().optional(),
   emailSmtpPassword: z.string().min(1).optional(),
-  emailFrom: z.string().email().optional(),
+  emailFrom: z
+    .string()
+    .refine(isValidMailbox, "Ungültige Absenderadresse")
+    .optional(),
   emailTo: z
     .string()
     .refine(
-      (v) => v === "" || v.split(",").every((addr) => z.string().email().safeParse(addr.trim()).success),
+      (v) => v === "" || v.split(",").every((addr) => isValidMailbox(addr)),
       "Ungültige E-Mail-Adresse(n)",
     )
     .optional(),

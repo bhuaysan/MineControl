@@ -50,10 +50,16 @@ export async function twoFactorRoutes(app: FastifyInstance): Promise<void> {
     if (user.totpEnabled) {
       return reply.code(409).send({ error: "already_enabled", message: "Bereits aktiv" });
     }
-    if (!verifyToken(decryptSecret(user.totpSecretEnc), parsed.data.code)) {
+    const enableStep = verifyToken(decryptSecret(user.totpSecretEnc), parsed.data.code);
+    if (enableStep === null) {
       return reply.code(400).send({ error: "invalid_code", message: "Code ungültig" });
     }
-    await prisma.user.update({ where: { id: user.id }, data: { totpEnabled: true } });
+    // Aktivierungscode gleich als verbraucht markieren, damit er nicht direkt
+    // beim ersten Login erneut gilt (Replay-Schutz, siehe auth/routes.ts).
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { totpEnabled: true, totpLastStep: enableStep },
+    });
     await recordAudit({ userId: user.id, action: "2fa.enable" });
     return reply.send({ enabled: true });
   });
@@ -68,12 +74,12 @@ export async function twoFactorRoutes(app: FastifyInstance): Promise<void> {
     if (!user?.totpEnabled || !user.totpSecretEnc) {
       return reply.code(400).send({ error: "not_enabled", message: "2FA ist nicht aktiv" });
     }
-    if (!verifyToken(decryptSecret(user.totpSecretEnc), parsed.data.code)) {
+    if (verifyToken(decryptSecret(user.totpSecretEnc), parsed.data.code) === null) {
       return reply.code(400).send({ error: "invalid_code", message: "Code ungültig" });
     }
     await prisma.user.update({
       where: { id: user.id },
-      data: { totpSecretEnc: null, totpEnabled: false },
+      data: { totpSecretEnc: null, totpEnabled: false, totpLastStep: null },
     });
     await recordAudit({ userId: user.id, action: "2fa.disable" });
     return reply.send({ enabled: false });

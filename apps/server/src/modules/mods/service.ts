@@ -1,7 +1,7 @@
 import type { Server } from "@prisma/client";
 import * as tar from "tar-stream";
 import type { InstalledModDto, ModSearchHitDto } from "@minecontrol/shared";
-import { containerName, docker } from "../../adapters/dockerClient.js";
+import { CONTAINER_UID, containerName, docker } from "../../adapters/dockerClient.js";
 import { createDockerAdapter } from "../../adapters/registry.js";
 
 const MODRINTH = "https://api.modrinth.com/v2";
@@ -164,7 +164,12 @@ export async function installMod(
 
   const container = docker.getContainer(containerName(server.id));
   const pack = tar.pack();
-  pack.entry({ name: `${info.folder}/${filename}` }, data);
+  // uid/gid = 1000: konsistent mit allen anderen putArchive-Schreibern, damit
+  // der Container die Datei (und darauf aufbauende Konfig-Dateien) besitzt.
+  pack.entry(
+    { name: `${info.folder}/${filename}`, uid: CONTAINER_UID, gid: CONTAINER_UID },
+    data,
+  );
   pack.finalize();
   await container.putArchive(pack, { path: "/data" });
   return filename;

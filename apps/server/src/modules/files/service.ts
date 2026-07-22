@@ -4,6 +4,7 @@ import type { Server } from "@prisma/client";
 import * as tar from "tar-stream";
 import type { FileEntryDto, FileEntryType } from "@minecontrol/shared";
 import {
+  CONTAINER_UID,
   MC_IMAGE,
   containerName,
   dataVolumeName,
@@ -215,7 +216,10 @@ export async function writeFile(
   await assertInsideData(server, file, true);
   const container = docker.getContainer(containerName(server.id));
   const pack = tar.pack();
-  pack.entry({ name: posix.basename(file) }, data);
+  // uid/gid = 1000: sonst gehört die Datei root und der itzg-Server (uid 1000)
+  // kann vom Server selbst verwaltete Dateien (server.properties, ops.json …)
+  // beim Start nicht überschreiben → AccessDenied-Crashloop.
+  pack.entry({ name: posix.basename(file), uid: CONTAINER_UID, gid: CONTAINER_UID }, data);
   pack.finalize();
   await container.putArchive(pack, { path: posix.dirname(file) });
 }
@@ -228,7 +232,12 @@ export async function makeDirectory(server: Server, rel: string): Promise<void> 
   await assertInsideData(server, dir, true);
   const container = docker.getContainer(containerName(server.id));
   const pack = tar.pack();
-  pack.entry({ name: posix.basename(dir), type: "directory" }, "");
+  // uid/gid = 1000: sonst gehört der Ordner root und der Server kann darin
+  // nichts anlegen (siehe writeFile).
+  pack.entry(
+    { name: posix.basename(dir), type: "directory", uid: CONTAINER_UID, gid: CONTAINER_UID },
+    "",
+  );
   pack.finalize();
   await container.putArchive(pack, { path: posix.dirname(dir) });
 }

@@ -45,8 +45,25 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           .code(401)
           .send({ error: "2fa_required", message: "Bestätigungscode erforderlich" });
       }
-      if (!verifyToken(decryptSecret(user.totpSecretEnc), code)) {
+      const step = verifyToken(decryptSecret(user.totpSecretEnc), code);
+      if (step === null) {
         return reply.code(401).send({ error: "2fa_invalid", message: "Code ungültig" });
+      }
+      // Replay-Schutz: ein Code darf nur einmal genutzt werden. Der akzeptierte
+      // Zeitschritt muss echt größer als der zuletzt verbrauchte sein; das
+      // atomare updateMany (Bedingung im WHERE) verhindert auch parallele
+      // Logins mit demselben Code.
+      const claimed = await prisma.user.updateMany({
+        where: {
+          id: user.id,
+          OR: [{ totpLastStep: null }, { totpLastStep: { lt: step } }],
+        },
+        data: { totpLastStep: step },
+      });
+      if (claimed.count === 0) {
+        return reply
+          .code(401)
+          .send({ error: "2fa_invalid", message: "Code bereits verwendet" });
       }
     }
 
