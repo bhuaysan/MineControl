@@ -11,11 +11,25 @@
 	encode zstd gzip
 
 	# API und WebSocket ans Backend weiterleiten.
-	@backend path /api/* /ws /ws/*
-	reverse_proxy @backend {$MC_UPSTREAM:127.0.0.1:3000}
+	# WICHTIG: `handle`-Blöcke statt eines Matchers + `try_files`. Sonst schreibt
+	# `try_files` (läuft in Caddys Direktiven-Reihenfolge VOR `reverse_proxy`)
+	# jeden nicht existierenden Pfad — auch /api/* — auf /index.html um, sodass
+	# der Proxy-Matcher nicht mehr greift und API-Requests im file_server landen.
+	# `handle`-Blöcke sind gegenseitig exklusiv und in Definitionsreihenfolge.
+	handle /api/* {
+		reverse_proxy {$MC_UPSTREAM:127.0.0.1:3000}
+	}
+	handle /ws {
+		reverse_proxy {$MC_UPSTREAM:127.0.0.1:3000}
+	}
+	handle /ws/* {
+		reverse_proxy {$MC_UPSTREAM:127.0.0.1:3000}
+	}
 
 	# Alles andere: statische SPA-Dateien, sonst index.html (SPA-Fallback).
-	root * /srv
-	try_files {path} /index.html
-	file_server
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
 }
