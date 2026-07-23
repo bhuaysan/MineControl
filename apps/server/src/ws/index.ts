@@ -1,8 +1,10 @@
-import type { ClientMessage, ServerMessage, WsTopic } from "@minecontrol/shared";
+import type { ClientMessage, Role, ServerMessage, WsTopic } from "@minecontrol/shared";
+import { hasRole } from "@minecontrol/shared";
 import type { WebSocket } from "@fastify/websocket";
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import { createDockerAdapter } from "../adapters/registry.js";
-import { SESSION_COOKIE } from "../config.js";
+import { resolveSessionUser } from "../auth.js";
 import { prisma } from "../db.js";
 import { TPS_EDITIONS, parseTps } from "../modules/metrics/tps.js";
 import { listServerDtos, toServerDto } from "../modules/servers/service.js";
@@ -10,7 +12,49 @@ import { listServerDtos, toServerDto } from "../modules/servers/service.js";
 /** Eine aktive WebSocket-Verbindung mit ihren Abos. */
 interface Connection {
   socket: WebSocket;
+  role: Role;
   topics: Set<WsTopic>;
+}
+
+// CUIDs (Server-IDs) sind kurz — großzügige Obergrenze schließt beliebig lange
+// Fantasie-IDs aus, mit denen ein Client sonst Speicher/Streams aufblähen könnte.
+const TOPIC_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** Höchstzahl gleichzeitiger Abos pro Verbindung — begrenzt Speicher-/Stream-Verbrauch. */
+const MAX_TOPICS_PER_CONNECTION = 20;
+
+const topicSchema = z
+  .string()
+  .refine(
+    (topic): topic is WsTopic =>
+      topic === "dashboard" ||
+      (topic.startsWith("console:") && TOPIC_ID_PATTERN.test(topic.slice("console:".length))) ||
+      (topic.startsWith("metrics:") && TOPIC_ID_PATTERN.test(topic.slice("metrics:".length))),
+  );
+
+const clientMessageSchema = z.union([
+  z.object({ type: z.literal("subscribe"), topic: topicSchema }),
+  z.object({ type: z.literal("unsubscribe"), topic: topicSchema }),
+]);
+
+/** Parst und validiert eine eingehende Client-Nachricht; `null` bei ungültiger Form.
+ * Exportiert (nur) für Unit-Tests der Validierung — siehe ws/index.test.ts. */
+export function parseClientMessage(data: Buffer): ClientMessage | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(data.toString());
+  } catch {
+    return null;
+  }
+  const parsed = clientMessageSchema.safeParse(json);
+  return parsed.success ? (parsed.data as ClientMessage) : null;
+}
+
+/** Mindestrolle je Topic-Präfix — muss zur UI-Sichtbarkeit passen (Konsole ist Moderator+).
+ * Exportiert (nur) für Unit-Tests — siehe ws/index.test.ts. */
+export function canSubscribe(role: Role, topic: WsTopic): boolean {
+  if (topic.startsWith("console:")) return hasRole(role, "MODERATOR");
+  return true;
 }
 
 const connections = new Set<Connection>();
@@ -263,31 +307,32 @@ function startStatusPoller(intervalMs = 10_000): void {
 
 export async function registerWebsocket(app: FastifyInstance): Promise<void> {
   app.get("/ws", { websocket: true }, async (socket, request) => {
-    // Authentifizierung über das signierte Session-Cookie.
-    const raw = request.cookies[SESSION_COOKIE];
-    const unsigned = raw ? request.unsignCookie(raw) : null;
-    const userId = unsigned?.valid ? unsigned.value : null;
-    const user = userId
-      ? await prisma.user.findUnique({ where: { id: userId } })
-      : null;
+    // Authentifizierung über das signierte Session-Cookie — dieselbe Auflösung
+    // wie die HTTP-Routen (dekodiert `userId:sessionVersion` und prüft die
+    // sessionVersion), damit widerrufene Sitzungen auch hier abgewiesen werden.
+    const user = await resolveSessionUser(request);
     if (!user) {
       send(socket, { type: "error", message: "Nicht angemeldet" });
       socket.close();
       return;
     }
 
-    const conn: Connection = { socket, topics: new Set() };
+    const conn: Connection = { socket, role: user.role, topics: new Set() };
     connections.add(conn);
 
     socket.on("message", (data: Buffer) => {
-      let msg: ClientMessage;
-      try {
-        msg = JSON.parse(data.toString()) as ClientMessage;
-      } catch {
-        return;
-      }
+      const msg = parseClientMessage(data);
+      if (!msg) return; // Unbekannte/ungültige Nachricht — ignorieren statt crashen.
       if (msg.type === "subscribe") {
         if (conn.topics.has(msg.topic)) return; // Doppel-Abo ignorieren.
+        if (!canSubscribe(conn.role, msg.topic)) {
+          send(socket, { type: "error", message: "Keine Berechtigung für dieses Thema" });
+          return;
+        }
+        if (conn.topics.size >= MAX_TOPICS_PER_CONNECTION) {
+          send(socket, { type: "error", message: "Zu viele gleichzeitige Abos" });
+          return;
+        }
         conn.topics.add(msg.topic);
         onSubscribe(msg.topic);
       } else if (msg.type === "unsubscribe") {
