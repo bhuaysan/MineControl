@@ -60,6 +60,13 @@ export interface ServerDto {
   hasRcon: boolean;
   capabilities: Capability[];
   status: ServerStatus;
+  /** Auto-Restart/Crash-Recovery aktiv (nur für Docker-Server sinnvoll). */
+  autoRestart: boolean;
+}
+
+/** Auto-Restart für einen Server ein-/ausschalten. */
+export interface SetAutoRestartRequest {
+  enabled: boolean;
 }
 
 /** Anlage eines externen Servers (Phase 1). */

@@ -164,6 +164,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ action }),
     }),
+  setAutoRestart: (id: string, enabled: boolean) =>
+    request<ServerDto>(`/api/servers/${id}/auto-restart`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    }),
   getProperties: (id: string) =>
     request<ServerPropertiesDto>(`/api/servers/${id}/properties`),
   updateProperties: (id: string, properties: Record<string, string>) =>

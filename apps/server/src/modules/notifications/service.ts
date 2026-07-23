@@ -246,6 +246,43 @@ export async function notifyServerDown(serverName: string): Promise<void> {
   ]);
 }
 
+/**
+ * Auto-Restart wurde ausgelöst (Server hing/war nicht erreichbar). Nutzt denselben
+ * Schalter wie „Server offline", da es dieselbe Verfügbarkeits-Sorge betrifft.
+ */
+export async function notifyAutoRestart(
+  serverName: string,
+  minutesDown: number,
+  attempt: number,
+  maxAttempts: number,
+): Promise<void> {
+  if (!(await readBool(KEYS.serverDown, true))) return;
+  const detail = `nach ${minutesDown} min ohne Antwort (Versuch ${attempt}/${maxAttempts})`;
+  await Promise.all([
+    postToDiscord(`🔁 **${serverName}** wird automatisch neu gestartet — ${detail}.`),
+    postToEmail(
+      "MineControl: Auto-Restart ausgelöst",
+      `${serverName} wird automatisch neu gestartet — ${detail}.`,
+    ),
+  ]);
+}
+
+/** Auto-Restart hat nach der maximalen Anzahl Versuche aufgegeben. */
+export async function notifyAutoRestartGaveUp(
+  serverName: string,
+  maxAttempts: number,
+): Promise<void> {
+  if (!(await readBool(KEYS.serverDown, true))) return;
+  const detail = `nach ${maxAttempts} erfolglosen Versuchen — manuelles Eingreifen nötig`;
+  await Promise.all([
+    postToDiscord(`⛔ Auto-Restart für **${serverName}** aufgegeben ${detail}.`),
+    postToEmail(
+      "MineControl: Auto-Restart aufgegeben",
+      `Auto-Restart für ${serverName} aufgegeben ${detail}.`,
+    ),
+  ]);
+}
+
 export async function notifyBackupFailed(
   serverName: string,
   error: string,

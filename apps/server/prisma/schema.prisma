@@ -69,6 +69,9 @@ model Server {
   networkId         String?
   network           Network?   @relation("NetworkMembers", fields: [networkId], references: [id], onDelete: SetNull)
   networkAlias      String? // Name, unter dem der Proxy diesen Subserver kennt (z. B. „lobby")
+  // Auto-Restart/Crash-Recovery: wenn true, startet der Sampler den Container
+  // neu, sobald er zu lange läuft-aber-nicht-erreichbar ist (Hänger/Crashloop).
+  autoRestart       Boolean    @default(false)
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 

@@ -1,9 +1,18 @@
+import type { Server } from "@prisma/client";
 import type { MetricSampleDto, ServerState } from "@minecontrol/shared";
-import { DockerAdapter } from "../../adapters/docker.js";
+import { DockerAdapter, isProvisioning } from "../../adapters/docker.js";
 import { createAdapter } from "../../adapters/registry.js";
+import type { ServerAdapter } from "../../adapters/types.js";
+import { config } from "../../config.js";
 import { prisma } from "../../db.js";
-import { notifyServerDown } from "../notifications/service.js";
+import { recordAudit } from "../audit/service.js";
+import {
+  notifyAutoRestart,
+  notifyAutoRestartGaveUp,
+  notifyServerDown,
+} from "../notifications/service.js";
 import { reconcileSessions } from "../players/service.js";
+import { reattachServerStreams } from "../../ws/index.js";
 import { TPS_EDITIONS, sampleTps } from "./tps.js";
 
 /** Letzter bekannter Zustand je Server — für Down-Erkennung. */
@@ -29,6 +38,140 @@ function consumeSuppression(serverId: string): boolean {
   if (until === undefined) return false;
   suppressedUntil.delete(serverId);
   return until > Date.now();
+}
+
+/** Prüft, ob gerade eine Unterdrückung aktiv ist, OHNE sie zu verbrauchen. */
+function isSuppressed(serverId: string): boolean {
+  const until = suppressedUntil.get(serverId);
+  return until !== undefined && until > Date.now();
+}
+
+// --- Auto-Restart / Crash-Recovery ----------------------------------------
+//
+// Ergänzt Dockers `unless-stopped`-Policy (die exited Container neu startet):
+// Wir greifen NUR bei einem Container, der LÄUFT/​restartet, aber dessen
+// Minecraft-Server über längere Zeit nicht erreichbar ist (Status STARTING) —
+// also einem Hänger oder Crashloop, den die exit-basierte Docker-Policy nicht
+// löst. Bewusst gestoppte Server (OFFLINE) fassen wir nicht an; die
+// unless-stopped-Policy unterscheidet „gestoppt" von „abgestürzt" für uns.
+
+export type AutoRestartAction = "none" | "restart" | "giveup";
+
+export interface AutoRestartTrack {
+  /** Zeitpunkt (ms), seit dem der Server ununterbrochen STARTING ist; null = nicht in diesem Zustand. */
+  unhealthySince: number | null;
+  /** Bereits durchgeführte Auto-Restart-Versuche seit dem letzten ONLINE. */
+  attempts: number;
+  /** true, sobald nach maxAttempts aufgegeben wurde (bis der Server wieder ONLINE ist). */
+  gaveUp: boolean;
+}
+
+export function newAutoRestartTrack(): AutoRestartTrack {
+  return { unhealthySince: null, attempts: 0, gaveUp: false };
+}
+
+/** Zustand je Server für die Auto-Restart-Entscheidung. */
+const autoRestartTracks = new Map<string, AutoRestartTrack>();
+
+/**
+ * Reine, testbare Entscheidungsfunktion. Aktualisiert den Track und liefert die
+ * auszuführende Aktion.
+ *
+ * - `ONLINE`  → vollständiger Reset (gesund).
+ * - `STARTING` & nicht unterdrückt → Uhr läuft; nach `graceMs` ein Neustart,
+ *   bis `maxAttempts` erreicht sind, danach `giveup` (bis wieder ONLINE).
+ * - Alles andere (OFFLINE/ERROR/UNKNOWN) oder eine aktive Unterdrückung
+ *   (geplanter Stop/Restart/Backup/…) → Uhr anhalten, nichts tun.
+ */
+export function decideAutoRestart(
+  state: ServerState,
+  track: AutoRestartTrack,
+  opts: { now: number; graceMs: number; maxAttempts: number; suppressed: boolean },
+): { track: AutoRestartTrack; action: AutoRestartAction } {
+  if (state === "ONLINE") {
+    return { track: newAutoRestartTrack(), action: "none" };
+  }
+  if (state !== "STARTING" || opts.suppressed) {
+    return { track: { ...track, unhealthySince: null }, action: "none" };
+  }
+  if (track.gaveUp) return { track, action: "none" };
+  if (track.unhealthySince === null) {
+    return { track: { ...track, unhealthySince: opts.now }, action: "none" };
+  }
+  if (opts.now - track.unhealthySince < opts.graceMs) {
+    return { track, action: "none" };
+  }
+  if (track.attempts >= opts.maxAttempts) {
+    return { track: { ...track, gaveUp: true }, action: "giveup" };
+  }
+  return {
+    track: { ...track, attempts: track.attempts + 1, unhealthySince: opts.now },
+    action: "restart",
+  };
+}
+
+/** Wendet die Auto-Restart-Entscheidung auf einen Server an (Neustart + Notif + Audit). */
+async function maybeAutoRestart(
+  server: Server,
+  adapter: ServerAdapter,
+  state: ServerState,
+): Promise<void> {
+  if (server.type !== "DOCKER" || !server.autoRestart) {
+    autoRestartTracks.delete(server.id);
+    return;
+  }
+  // Erst-Provisionierung (Image-Pull/erster Boot) nicht unterbrechen.
+  if (isProvisioning(server.id)) return;
+
+  const track = autoRestartTracks.get(server.id) ?? newAutoRestartTrack();
+  const { track: next, action } = decideAutoRestart(state, track, {
+    now: Date.now(),
+    graceMs: config.autoRestartGraceMs,
+    maxAttempts: config.autoRestartMaxAttempts,
+    suppressed: isSuppressed(server.id),
+  });
+  autoRestartTracks.set(server.id, next);
+  if (action === "none") return;
+
+  const minutesDown = Math.round(config.autoRestartGraceMs / 60_000);
+  if (action === "restart") {
+    console.warn(
+      `Auto-Restart: ${server.name} hängt seit ~${minutesDown} min — Neustart (Versuch ${next.attempts}/${config.autoRestartMaxAttempts}).`,
+    );
+    // Den eigenen Neustart nicht als „Server offline" melden.
+    suppressDownAlert(server.id);
+    try {
+      await adapter.restart();
+      reattachServerStreams(server.id);
+    } catch (err) {
+      console.error(`Auto-Restart für ${server.name} fehlgeschlagen:`, err);
+    }
+    await recordAudit({
+      serverId: server.id,
+      action: "server.autoRestart",
+      details: {
+        attempt: next.attempts,
+        maxAttempts: config.autoRestartMaxAttempts,
+        minutesDown,
+      },
+    });
+    await notifyAutoRestart(
+      server.name,
+      minutesDown,
+      next.attempts,
+      config.autoRestartMaxAttempts,
+    );
+  } else {
+    console.error(
+      `Auto-Restart: für ${server.name} nach ${config.autoRestartMaxAttempts} Versuchen aufgegeben.`,
+    );
+    await recordAudit({
+      serverId: server.id,
+      action: "server.autoRestartGaveUp",
+      details: { maxAttempts: config.autoRestartMaxAttempts },
+    });
+    await notifyAutoRestartGaveUp(server.name, config.autoRestartMaxAttempts);
+  }
 }
 
 /** Erfasst eine Momentaufnahme aller Server und erkennt Down-Übergänge. */
@@ -85,6 +228,9 @@ async function sampleAll(): Promise<void> {
         if (!consumeSuppression(server.id)) await notifyServerDown(server.name);
       }
       prevStates.set(server.id, now);
+
+      // Auto-Restart/Crash-Recovery (nur Docker + aktiviert).
+      await maybeAutoRestart(server, adapter, now);
     } catch (err) {
       console.error(`Metrik-Sample für ${server.name} fehlgeschlagen:`, err);
     }

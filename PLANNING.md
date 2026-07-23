@@ -172,6 +172,8 @@ ScheduledTask id, serverId, cron, action (RESTART|COMMAND|BACKUP), payload
 - ~~MineControl-Agent für externe Server (Start/Stop, Logs, Dateien)~~ — **gestrichen** (Aufwand zu hoch; RCON-Verwaltung externer Server genügt)
 - [x] Welt-Verwaltung: Download, mehrere Welten (auflisten/wechseln/erstellen/löschen), Upload (.tar.gz), Pregen via Chunky
 - [x] 2FA (TOTP) + API-Tokens für Automatisierung
+- [x] Produktiv-Deployment: `docker-compose.yml` (Backend + Caddy/TLS), MineControl selbst als Container (siehe README „Deployment")
+- [x] Auto-Restart/Crash-Recovery: erkennt hängende Docker-Server (läuft, aber nicht erreichbar) und startet sie neu (per-Server-Schalter, Grace/Max-Versuche, Benachrichtigung) — ergänzt Dockers `unless-stopped`-Policy
 
 ---
 

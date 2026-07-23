@@ -1,6 +1,7 @@
 import type { LifecycleAction, ServerDto } from "@minecontrol/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api.js";
+import { useAuth } from "../auth/AuthContext.js";
 import { serversQueryKey } from "../hooks/useServers.js";
 
 /**
@@ -10,15 +11,23 @@ import { serversQueryKey } from "../hooks/useServers.js";
  */
 export function ServerActions({ server }: { server: ServerDto }) {
   const queryClient = useQueryClient();
+  const { can } = useAuth();
   const caps = server.capabilities;
   const state = server.status.state;
 
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ["server", server.id] });
+    void queryClient.invalidateQueries({ queryKey: serversQueryKey });
+  };
+
   const mutation = useMutation({
     mutationFn: (action: LifecycleAction) => api.lifecycleAction(server.id, action),
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ["server", server.id] });
-      void queryClient.invalidateQueries({ queryKey: serversQueryKey });
-    },
+    onSettled: invalidate,
+  });
+
+  const autoRestartMutation = useMutation({
+    mutationFn: (enabled: boolean) => api.setAutoRestart(server.id, enabled),
+    onSettled: invalidate,
   });
 
   const run = (action: LifecycleAction, confirmMsg?: string) => {
@@ -76,6 +85,21 @@ export function ServerActions({ server }: { server: ServerDto }) {
         </button>
       )}
       {busy && <span className="text-xs text-neutral-500">…</span>}
+      {isDocker && can("ADMIN") && (
+        <label
+          className="ml-auto flex cursor-pointer items-center gap-2 text-sm text-neutral-300"
+          title="Startet den Container automatisch neu, wenn Minecraft zu lange nicht erreichbar ist (Hänger/Crashloop)."
+        >
+          <input
+            type="checkbox"
+            checked={server.autoRestart}
+            disabled={autoRestartMutation.isPending}
+            onChange={(e) => autoRestartMutation.mutate(e.target.checked)}
+            className="h-4 w-4 rounded border-neutral-600 bg-neutral-800"
+          />
+          Auto-Restart
+        </label>
+      )}
     </div>
   );
 }

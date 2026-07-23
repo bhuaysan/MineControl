@@ -454,6 +454,42 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
+  // Auto-Restart/Crash-Recovery ein-/ausschalten (nur Docker) — Admin.
+  app.patch(
+    "/api/servers/:id/auto-restart",
+    { preHandler: requireRole("ADMIN") },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const parsed = z.object({ enabled: z.boolean() }).safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "bad_request", message: "Feld enabled (boolean) erwartet" });
+      }
+      const server = await prisma.server.findUnique({ where: { id } });
+      if (!server) {
+        return reply.code(404).send({ error: "not_found", message: "Server nicht gefunden" });
+      }
+      if (server.type !== "DOCKER") {
+        return reply.code(422).send({
+          error: "unsupported",
+          message: "Auto-Restart ist nur für Docker-Server verfügbar",
+        });
+      }
+      const updated = await prisma.server.update({
+        where: { id },
+        data: { autoRestart: parsed.data.enabled },
+      });
+      await recordAudit({
+        userId: request.user?.id,
+        serverId: id,
+        action: "server.autoRestart.config",
+        details: { enabled: parsed.data.enabled },
+      });
+      return reply.send(await toServerDto(updated));
+    },
+  );
+
   // server.properties lesen (nur Docker) — Moderator+.
   app.get("/api/servers/:id/properties", async (request, reply) => {
     const { id } = request.params as { id: string };

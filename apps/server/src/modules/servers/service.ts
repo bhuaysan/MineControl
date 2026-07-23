@@ -51,6 +51,7 @@ export async function toServerDto(server: Server): Promise<ServerDto> {
     hasRcon: Boolean(server.rconPort && server.rconPasswordEnc),
     capabilities: adapter.capabilities(),
     status,
+    autoRestart: server.autoRestart,
   };
 }
 

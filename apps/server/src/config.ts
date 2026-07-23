@@ -45,6 +45,15 @@ export const config = {
   importMaxBytes: Number(optional("IMPORT_MAX_MB", "10240")) * 1024 * 1024,
   /** Obergrenze (Bytes) für eigene Plugin-/Mod-Jars (Upload + URL-Download). Default 200 MB. */
   modsMaxBytes: Number(optional("MODS_MAX_MB", "200")) * 1024 * 1024,
+  /**
+   * Auto-Restart/Crash-Recovery: Wie lange ein Docker-Server ununterbrochen
+   * „läuft, aber nicht erreichbar" (Status STARTING) sein darf, bevor der
+   * Sampler ihn neu startet. Bewusst großzügig (Default 5 min), damit ein
+   * normaler Boot nicht fälschlich unterbrochen wird.
+   */
+  autoRestartGraceMs: Number(optional("AUTO_RESTART_GRACE_MIN", "5")) * 60_000,
+  /** Max. aufeinanderfolgende Auto-Restart-Versuche, bevor aufgegeben wird (bis wieder ONLINE). */
+  autoRestartMaxAttempts: Number(optional("AUTO_RESTART_MAX_ATTEMPTS", "3")),
   sessionSecret,
   encryptionKey: Buffer.from(encryptionKeyHex, "hex"),
   /**
