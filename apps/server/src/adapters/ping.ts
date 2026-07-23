@@ -58,9 +58,15 @@ function framePacket(payload: Buffer): Buffer {
   return Buffer.concat([writeVarInt(payload.length), payload]);
 }
 
+// Obergrenze für die Antwort (Header + JSON-Status). Ein MOTD/Favicon-Status
+// passt locker in wenige zehn KB — 1 MiB lässt viel Luft, verhindert aber,
+// dass ein fremder/kompromittierter Server bis zum Timeout beliebig viele
+// Daten schickt oder eine absurd große Paketlänge ankündigt.
+const MAX_RESPONSE_BYTES = 1 << 20;
+
 /**
  * Fragt den Status eines Minecraft-Servers ab (Ping).
- * @throws bei Timeout oder Verbindungsfehler.
+ * @throws bei Timeout, Verbindungsfehler oder Antwort über `MAX_RESPONSE_BYTES`.
  */
 export function pingServer(
   host: string,
@@ -70,7 +76,11 @@ export function pingServer(
   return new Promise((resolve, reject) => {
     const socket = new Socket();
     const started = Date.now();
-    let response = Buffer.alloc(0);
+    // Chunks werden gesammelt statt bei jedem Event komplett neu kopiert zu
+    // werden (Buffer.concat je Chunk wäre O(n²) bei vielen kleinen Chunks) —
+    // erst zusammengeführt, sobald wirklich genug Daten da sind.
+    const chunks: Buffer[] = [];
+    let totalLength = 0;
     let expectedLength = -1;
     let headerSize = 0;
     let settled = false;
@@ -108,12 +118,24 @@ export function pingServer(
     });
 
     socket.on("data", (chunk) => {
-      response = Buffer.concat([response, chunk]);
+      chunks.push(chunk);
+      totalLength += chunk.length;
+      if (totalLength > MAX_RESPONSE_BYTES) {
+        finish(new Error(`Ping-Antwort überschreitet Limit von ${MAX_RESPONSE_BYTES} Bytes`));
+        return;
+      }
 
-      // Auf vollständigen Paket-Header (Länge) warten
+      // Auf vollständigen Paket-Header (Länge) warten. Der Header verteilt
+      // sich in der Praxis nie über mehrere Chunks, aber falls doch, muss
+      // hier zusammengeführt werden, um ihn überhaupt lesen zu können.
       if (expectedLength < 0) {
+        const head = chunks.length === 1 ? chunks[0]! : Buffer.concat(chunks, totalLength);
         try {
-          const { value, size } = readVarInt(response, 0);
+          const { value, size } = readVarInt(head, 0);
+          if (value > MAX_RESPONSE_BYTES) {
+            finish(new Error("Angekündigte Paketlänge überschreitet das zulässige Limit"));
+            return;
+          }
           expectedLength = value;
           headerSize = size;
         } catch {
@@ -121,8 +143,9 @@ export function pingServer(
         }
       }
 
-      if (response.length < headerSize + expectedLength) return; // mehr Daten nötig
+      if (totalLength < headerSize + expectedLength) return; // mehr Daten nötig
 
+      const response = Buffer.concat(chunks, totalLength);
       try {
         let cursor = headerSize;
         const packetId = readVarInt(response, cursor);

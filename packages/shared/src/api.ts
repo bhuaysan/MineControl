@@ -62,6 +62,8 @@ export interface ServerDto {
   status: ServerStatus;
   /** Auto-Restart/Crash-Recovery aktiv (nur für Docker-Server sinnvoll). */
   autoRestart: boolean;
+  /** Fehlertext des letzten fehlgeschlagenen Provisionierungsversuchs, falls vorhanden. */
+  provisionError?: string;
 }
 
 /** Auto-Restart für einen Server ein-/ausschalten. */

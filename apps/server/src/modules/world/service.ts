@@ -71,18 +71,30 @@ function mapExecError(err: unknown): WorldError {
   return new WorldError(502, "exec_failed", (err as Error).message);
 }
 
+/** `true`, wenn `name` ein einzelnes, traversal-freies Pfadsegment ist. */
+function isValidWorldName(name: string): boolean {
+  return WORLD_NAME_REGEX.test(name) && name !== "." && name !== "..";
+}
+
 /** Validiert einen Weltnamen (ein Segment, keine Traversal). */
 function assertName(name: string): void {
-  if (!WORLD_NAME_REGEX.test(name) || name === "." || name === "..") {
+  if (!isValidWorldName(name)) {
     throw new WorldError(400, "bad_name", "Ungültiger Weltname");
   }
 }
 
-/** Aktive Welt aus server.properties (`level-name`, Standard „world"). */
-async function activeLevel(server: Server): Promise<string> {
+/**
+ * Aktive Welt aus server.properties (`level-name`, Standard „world"). `level-name`
+ * kommt aus einer vom Nutzer/Plugin änderbaren Datei im Container — deshalb
+ * genauso validiert wie ein direkt übergebener Weltname, sonst könnte ein
+ * manipulierter Wert (z. B. „..") als Container-Pfad außerhalb von /data
+ * aufgelöst werden (siehe world/routes.ts `world/download`).
+ */
+export async function activeLevel(server: Server): Promise<string> {
   try {
     const props = await readServerProperties(server);
-    return props["level-name"] || "world";
+    const level = props["level-name"];
+    return level && isValidWorldName(level) ? level : "world";
   } catch {
     return "world";
   }

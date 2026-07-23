@@ -1,9 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import QRCode from "qrcode";
 import { z } from "zod";
-import { authenticate } from "../../auth.js";
+import { authenticate, requireSession, setSessionCookie } from "../../auth.js";
 import { decryptSecret, encryptSecret } from "../../crypto.js";
 import { prisma } from "../../db.js";
+import { clearAttempts, isRateLimited, registerFailedAttempt } from "../../rateLimit.js";
 import { recordAudit } from "../audit/service.js";
 import { generateSecret, otpauthUri, verifyToken } from "./totp.js";
 
@@ -19,7 +20,7 @@ export async function twoFactorRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Einrichtung starten: neues Secret + QR-Code. Muss anschließend bestätigt werden.
-  app.post("/api/2fa/setup", async (request, reply) => {
+  app.post("/api/2fa/setup", { preHandler: requireSession }, async (request, reply) => {
     const user = await prisma.user.findUnique({ where: { id: request.user!.id } });
     if (!user) return reply.code(404).send({ error: "not_found", message: "Unbekannt" });
     if (user.totpEnabled) {
@@ -38,10 +39,17 @@ export async function twoFactorRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Einrichtung bestätigen: Code gegen das ausstehende Secret prüfen → aktivieren.
-  app.post("/api/2fa/enable", async (request, reply) => {
+  app.post("/api/2fa/enable", { preHandler: requireSession }, async (request, reply) => {
     const parsed = codeSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "bad_request", message: "Code erforderlich" });
+    }
+    const rateLimitKey = `2fa:enable:${request.user!.id}`;
+    if (isRateLimited(rateLimitKey)) {
+      return reply.code(429).send({
+        error: "too_many_attempts",
+        message: "Zu viele Fehlversuche — bitte später erneut versuchen",
+      });
     }
     const user = await prisma.user.findUnique({ where: { id: request.user!.id } });
     if (!user?.totpSecretEnc) {
@@ -52,35 +60,57 @@ export async function twoFactorRoutes(app: FastifyInstance): Promise<void> {
     }
     const enableStep = verifyToken(decryptSecret(user.totpSecretEnc), parsed.data.code);
     if (enableStep === null) {
+      registerFailedAttempt(rateLimitKey);
       return reply.code(400).send({ error: "invalid_code", message: "Code ungültig" });
     }
+    clearAttempts(rateLimitKey);
     // Aktivierungscode gleich als verbraucht markieren, damit er nicht direkt
     // beim ersten Login erneut gilt (Replay-Schutz, siehe auth/routes.ts).
-    await prisma.user.update({
+    // sessionVersion erhöhen widerruft alle anderen (z. B. gestohlenen)
+    // Sessions dieses Nutzers — die eigene wird unten neu ausgestellt.
+    const updated = await prisma.user.update({
       where: { id: user.id },
-      data: { totpEnabled: true, totpLastStep: enableStep },
+      data: { totpEnabled: true, totpLastStep: enableStep, sessionVersion: { increment: 1 } },
     });
+    setSessionCookie(reply, updated);
     await recordAudit({ userId: user.id, action: "2fa.enable" });
     return reply.send({ enabled: true });
   });
 
   // Deaktivieren: erfordert einen gültigen Code.
-  app.post("/api/2fa/disable", async (request, reply) => {
+  app.post("/api/2fa/disable", { preHandler: requireSession }, async (request, reply) => {
     const parsed = codeSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "bad_request", message: "Code erforderlich" });
+    }
+    const rateLimitKey = `2fa:disable:${request.user!.id}`;
+    if (isRateLimited(rateLimitKey)) {
+      return reply.code(429).send({
+        error: "too_many_attempts",
+        message: "Zu viele Fehlversuche — bitte später erneut versuchen",
+      });
     }
     const user = await prisma.user.findUnique({ where: { id: request.user!.id } });
     if (!user?.totpEnabled || !user.totpSecretEnc) {
       return reply.code(400).send({ error: "not_enabled", message: "2FA ist nicht aktiv" });
     }
     if (verifyToken(decryptSecret(user.totpSecretEnc), parsed.data.code) === null) {
+      registerFailedAttempt(rateLimitKey);
       return reply.code(400).send({ error: "invalid_code", message: "Code ungültig" });
     }
-    await prisma.user.update({
+    clearAttempts(rateLimitKey);
+    // sessionVersion erhöhen widerruft alle anderen Sessions — die eigene
+    // wird unten neu ausgestellt, damit dieser Request nicht sich selbst aussperrt.
+    const updated = await prisma.user.update({
       where: { id: user.id },
-      data: { totpSecretEnc: null, totpEnabled: false, totpLastStep: null },
+      data: {
+        totpSecretEnc: null,
+        totpEnabled: false,
+        totpLastStep: null,
+        sessionVersion: { increment: 1 },
+      },
     });
+    setSessionCookie(reply, updated);
     await recordAudit({ userId: user.id, action: "2fa.disable" });
     return reply.send({ enabled: false });
   });

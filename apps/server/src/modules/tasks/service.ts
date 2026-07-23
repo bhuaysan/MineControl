@@ -16,6 +16,12 @@ type CronHandle = ReturnType<typeof cron.schedule>;
 /** Aktive cron-Handles je Task-ID. */
 const handles = new Map<string, CronHandle>();
 
+/** Task-IDs, die gerade laufen — verhindert Überlappung von Cron und „Jetzt
+ * ausführen" (bzw. zweier Cron-Ticks, falls ein Lauf länger als das
+ * Intervall dauert): parallele Backups/Restarts/Befehle auf demselben
+ * Server wären sonst möglich. */
+const running = new Set<string>();
+
 export function isValidCron(expression: string): boolean {
   return cron.validate(expression);
 }
@@ -46,30 +52,39 @@ export function toTaskDto(task: ScheduledTask): ScheduledTaskDto {
 
 /** Führt die Aktion eines Tasks aus (aus cron oder manuell „jetzt ausführen"). */
 export async function runTask(taskId: string): Promise<void> {
-  const task = await prisma.scheduledTask.findUnique({ where: { id: taskId } });
-  if (!task) return;
-  const server = await prisma.server.findUnique({ where: { id: task.serverId } });
-  if (!server) return;
-
+  if (running.has(taskId)) {
+    console.warn(`Task ${taskId} übersprungen — läuft bereits.`);
+    return;
+  }
+  running.add(taskId);
   try {
-    await executeAction(task, server);
-    await prisma.scheduledTask.update({
-      where: { id: task.id },
-      data: { lastRunAt: new Date(), lastError: null },
-    });
-    await recordAudit({
-      serverId: server.id,
-      action: `task.run.${task.action.toLowerCase()}`,
-      details: { task: task.name },
-    });
-  } catch (err) {
-    const message = (err as Error).message;
-    await prisma.scheduledTask.update({
-      where: { id: task.id },
-      data: { lastRunAt: new Date(), lastError: message },
-    });
-    await notifyTaskFailed(task.name, server.name, message);
-    console.error(`Task „${task.name}" fehlgeschlagen:`, err);
+    const task = await prisma.scheduledTask.findUnique({ where: { id: taskId } });
+    if (!task) return;
+    const server = await prisma.server.findUnique({ where: { id: task.serverId } });
+    if (!server) return;
+
+    try {
+      await executeAction(task, server);
+      await prisma.scheduledTask.update({
+        where: { id: task.id },
+        data: { lastRunAt: new Date(), lastError: null },
+      });
+      await recordAudit({
+        serverId: server.id,
+        action: `task.run.${task.action.toLowerCase()}`,
+        details: { task: task.name },
+      });
+    } catch (err) {
+      const message = (err as Error).message;
+      await prisma.scheduledTask.update({
+        where: { id: task.id },
+        data: { lastRunAt: new Date(), lastError: message },
+      });
+      await notifyTaskFailed(task.name, server.name, message);
+      console.error(`Task „${task.name}" fehlgeschlagen:`, err);
+    }
+  } finally {
+    running.delete(taskId);
   }
 }
 

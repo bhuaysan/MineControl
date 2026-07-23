@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -23,7 +24,10 @@ export function toBackupDto(backup: Backup): BackupDto {
 
 function backupPath(serverId: string, createdAt: Date): string {
   const stamp = createdAt.toISOString().replace(/[:.]/g, "-");
-  return join(config.backupDir, serverId, `${stamp}.tar.gz`);
+  // Zufalls-Suffix statt reinem Zeitstempel — zwei parallele (manuelle +
+  // geplante) Backups desselben Servers dürfen niemals dieselbe Datei treffen.
+  const suffix = randomBytes(3).toString("hex");
+  return join(config.backupDir, serverId, `${stamp}-${suffix}.tar.gz`);
 }
 
 function ensureDocker(server: Server): void {
@@ -62,7 +66,13 @@ export async function createBackup(
   const archive = (await container.getArchive({
     path: "/data",
   })) as unknown as NodeJS.ReadableStream;
-  await pipeline(archive, createGzip(), createWriteStream(target));
+  try {
+    await pipeline(archive, createGzip(), createWriteStream(target));
+  } catch (err) {
+    // Teilarchiv nicht liegen lassen — es gibt sowieso keinen DB-Eintrag dafür.
+    await rm(target, { force: true }).catch(() => {});
+    throw err;
+  }
 
   const { size } = await stat(target);
   const backup = await prisma.backup.create({
@@ -117,13 +127,17 @@ export async function restoreBackup(server: Server, backupId: string): Promise<v
 
   if (wasRunning) await container.stop({ t: 60 });
 
-  // gunzip → putArchive nach „/" (Tar-Einträge sind mit `data/` präfixiert).
-  await container.putArchive(
-    createReadStream(backup.path).pipe(createGunzip()),
-    { path: "/" },
-  );
-
-  if (wasRunning) await container.start();
+  // Der Neustart muss in jedem Fall versucht werden — sonst bleibt ein vorher
+  // laufender Server offline, wenn Dekompression/putArchive fehlschlägt.
+  try {
+    // gunzip → putArchive nach „/" (Tar-Einträge sind mit `data/` präfixiert).
+    await container.putArchive(
+      createReadStream(backup.path).pipe(createGunzip()),
+      { path: "/" },
+    );
+  } finally {
+    if (wasRunning) await container.start();
+  }
 }
 
 export async function deleteBackup(server: Server, backupId: string): Promise<void> {

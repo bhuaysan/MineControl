@@ -34,6 +34,10 @@ model User {
   // Zuletzt akzeptierter TOTP-Zeitschritt — verhindert Replay eines Codes
   // innerhalb desselben (±window) Zeitfensters.
   totpLastStep  Int?
+  // Wird bei Passwortänderung sowie 2FA-Aktivierung/-Deaktivierung erhöht —
+  // Session-Cookies tragen den Stand, mit dem sie ausgestellt wurden, und
+  // werden ungültig, sobald er nicht mehr übereinstimmt (Session-Widerruf).
+  sessionVersion Int       @default(1)
   auditLogs    AuditLog[]
   apiTokens    ApiToken[]
 }
@@ -72,6 +76,10 @@ model Server {
   // Auto-Restart/Crash-Recovery: wenn true, startet der Sampler den Container
   // neu, sobald er zu lange läuft-aber-nicht-erreichbar ist (Hänger/Crashloop).
   autoRestart       Boolean    @default(false)
+  // Fehlertext des letzten (fehlgeschlagenen) Provisionierungsversuchs. Wird
+  // bei jedem neuen Versuch gelöscht — bleibt sonst nach einem Neustart nur
+  // als unauffälliges „offline" zurück, ohne dass der Fehler sichtbar ist.
+  lastProvisionError String?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 

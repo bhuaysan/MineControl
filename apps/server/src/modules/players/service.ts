@@ -24,11 +24,25 @@ function sessionSeconds(joinedAt: Date, leftAt: Date | null, now: Date): number 
   return Math.max(0, Math.floor(((leftAt ?? now).getTime() - joinedAt.getTime()) / 1000));
 }
 
+/**
+ * Normalisiert einen Minecraft-Namen zum Identitätsschlüssel (`Player.uuid`).
+ * Trotz des Feldnamens ist das keine echte Mojang-UUID — nur der Name, denn
+ * RCON-`list` liefert keine UUIDs. Minecraft-Accounts sind aber groß-/
+ * kleinschreibungsunabhängig; ohne Normalisierung würden „Steve" und „steve"
+ * zwei getrennte Profile erzeugen. Ein echter Namenswechsel (Mojang erlaubt
+ * das) erzeugt weiterhin ein neues Profil — das bräuchte eine echte
+ * UUID-Auflösung (Mojang-API), die hier bewusst nicht gemacht wird.
+ */
+function playerKey(name: string): string {
+  return name.toLowerCase();
+}
+
 /** Legt einen Spieler an oder aktualisiert lastSeen/Namen. */
 async function upsertPlayer(name: string, now: Date): Promise<void> {
+  const key = playerKey(name);
   await prisma.player.upsert({
-    where: { uuid: name },
-    create: { uuid: name, lastKnownName: name, firstSeen: now, lastSeen: now },
+    where: { uuid: key },
+    create: { uuid: key, lastKnownName: name, firstSeen: now, lastSeen: now },
     update: { lastSeen: now, lastKnownName: name },
   });
 }
@@ -44,21 +58,24 @@ export async function reconcileSessions(
   onlineNames: string[],
 ): Promise<void> {
   const now = new Date();
-  const online = new Set(onlineNames.filter((n) => NAME_RE.test(n)));
+  // Schlüssel (normalisiert) → zuletzt gemeldeter Anzeigename.
+  const online = new Map<string, string>();
+  for (const n of onlineNames) {
+    if (NAME_RE.test(n)) online.set(playerKey(n), n);
+  }
 
   const openSessions = await prisma.playerSession.findMany({
     where: { serverId, leftAt: null },
   });
-  const openNames = new Set(openSessions.map((s) => s.playerId));
+  const openKeys = new Set(openSessions.map((s) => s.playerId));
 
-  // Beigetreten: online, aber keine offene Session.
-  for (const name of online) {
-    if (openNames.has(name)) {
-      await upsertPlayer(name, now); // weiter online → lastSeen aktualisieren
-    } else {
-      await upsertPlayer(name, now);
+  // Beigetreten oder weiter online → lastSeen/Namen auffrischen; neue Session
+  // nur öffnen, wenn noch keine läuft.
+  for (const [key, name] of online) {
+    await upsertPlayer(name, now);
+    if (!openKeys.has(key)) {
       await prisma.playerSession.create({
-        data: { playerId: name, serverId, joinedAt: now },
+        data: { playerId: key, serverId, joinedAt: now },
       });
     }
   }
@@ -70,7 +87,11 @@ export async function reconcileSessions(
         where: { id: session.id },
         data: { leftAt: now },
       });
-      await upsertPlayer(session.playerId, now);
+      // Nur lastSeen auffrischen — beim Verlassen liegt kein frischer
+      // Anzeigename vor, also lastKnownName nicht über upsertPlayer anfassen.
+      await prisma.player
+        .update({ where: { uuid: session.playerId }, data: { lastSeen: now } })
+        .catch(() => {});
     }
   }
 }
@@ -95,7 +116,8 @@ export async function listPlayers(): Promise<PlayerListItemDto[]> {
 }
 
 /** Vollständiges Profil eines Spielers oder `null`, wenn unbekannt. */
-export async function getPlayerProfile(key: string): Promise<PlayerProfileDto | null> {
+export async function getPlayerProfile(rawKey: string): Promise<PlayerProfileDto | null> {
+  const key = playerKey(rawKey);
   const now = new Date();
   const player = await prisma.player.findUnique({
     where: { uuid: key },
@@ -160,9 +182,10 @@ export async function getPlayerProfile(key: string): Promise<PlayerProfileDto | 
 
 /** Setzt die Admin-Notiz eines Spielers. */
 export async function updatePlayerNotes(
-  key: string,
+  rawKey: string,
   notes: string,
 ): Promise<boolean> {
+  const key = playerKey(rawKey);
   const exists = await prisma.player.count({ where: { uuid: key } });
   if (exists === 0) return false;
   await prisma.player.update({

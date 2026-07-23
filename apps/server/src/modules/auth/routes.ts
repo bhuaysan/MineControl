@@ -2,11 +2,12 @@ import type { LoginRequest, MeResponse } from "@minecontrol/shared";
 import argon2 from "argon2";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { SESSION_COOKIE, config } from "../../config.js";
+import { SESSION_COOKIE } from "../../config.js";
 import { decryptSecret } from "../../crypto.js";
 import { prisma } from "../../db.js";
-import { authenticate } from "../../auth.js";
+import { authenticate, setSessionCookie } from "../../auth.js";
 import { recordAudit } from "../audit/service.js";
+import { clearAttempts, isRateLimited, registerFailedAttempt } from "../../rateLimit.js";
 import { verifyToken } from "../twofa/totp.js";
 
 const loginSchema = z.object({
@@ -25,6 +26,22 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     }
     const { username, password, code } = parsed.data satisfies LoginRequest;
 
+    // Gegen Brute-Force auf Passwort/TOTP: pro Username UND pro IP sperren,
+    // damit weder ein gezielter Angriff auf ein Konto noch ein verteilter
+    // Angriff über viele Konten von derselben Quelle durchgängig weiterraten kann.
+    const userKey = `login:user:${username.toLowerCase()}`;
+    const ipKey = `login:ip:${request.ip}`;
+    if (isRateLimited(userKey) || isRateLimited(ipKey)) {
+      return reply.code(429).send({
+        error: "too_many_attempts",
+        message: "Zu viele Fehlversuche — bitte später erneut versuchen",
+      });
+    }
+    const registerFailure = (): void => {
+      registerFailedAttempt(userKey);
+      registerFailedAttempt(ipKey);
+    };
+
     const user = await prisma.user.findUnique({ where: { username } });
     // Gegen Timing-Angriffe: bei fehlendem User trotzdem verifizieren.
     const hash =
@@ -33,6 +50,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const ok = await argon2.verify(hash, password).catch(() => false);
 
     if (!user || !ok) {
+      registerFailure();
       return reply
         .code(401)
         .send({ error: "unauthorized", message: "Ungültige Anmeldedaten" });
@@ -47,6 +65,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       }
       const step = verifyToken(decryptSecret(user.totpSecretEnc), code);
       if (step === null) {
+        registerFailure();
         return reply.code(401).send({ error: "2fa_invalid", message: "Code ungültig" });
       }
       // Replay-Schutz: ein Code darf nur einmal genutzt werden. Der akzeptierte
@@ -61,20 +80,17 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         data: { totpLastStep: step },
       });
       if (claimed.count === 0) {
+        registerFailure();
         return reply
           .code(401)
           .send({ error: "2fa_invalid", message: "Code bereits verwendet" });
       }
     }
 
-    reply.setCookie(SESSION_COOKIE, user.id, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: config.isProduction,
-      signed: true,
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7, // 7 Tage
-    });
+    clearAttempts(userKey);
+    clearAttempts(ipKey);
+
+    setSessionCookie(reply, user);
 
     await recordAudit({ userId: user.id, action: "auth.login" });
 

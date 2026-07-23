@@ -16,14 +16,25 @@ export function dataVolumeName(serverId: string): string {
   return `minecontrol_${serverId}_data`;
 }
 
-/** Das Docker-Image, aus dem alle (Spiel-)Server erzeugt werden. */
-export const MC_IMAGE = "itzg/minecraft-server:latest";
+/**
+ * Das Docker-Image, aus dem alle (Spiel-)Server erzeugt werden. Bewusst auf
+ * eine konkrete Version gepinnt statt `:latest` — sonst zieht `ensureImage()`
+ * (die nur pullt, wenn der Tag noch gar nicht lokal vorhanden ist) auf jedem
+ * frischen Host einen anderen, ungeprüften Stand desselben Tags. Die
+ * itzg-Images laden die eigentliche Minecraft-Version/Edition ohnehin erst
+ * beim Container-Start herunter — das Pinnen hier schränkt also nicht ein,
+ * welche Minecraft-Version/Edition Nutzer wählen können. Bei Bedarf bewusst
+ * auf einen neueren Tag von https://hub.docker.com/r/itzg/minecraft-server/tags
+ * anheben.
+ */
+export const MC_IMAGE = "itzg/minecraft-server:2026.7.0";
 
 /**
  * Image für Proxy-Server (Velocity/BungeeCord). Eigenes Image mit `/server` als
  * Datenverzeichnis; das minecraft-server-Image kennt TYPE=VELOCITY nicht.
+ * Ebenfalls gepinnt (siehe MC_IMAGE) — Tags: https://hub.docker.com/r/itzg/mc-proxy/tags
  */
-export const PROXY_IMAGE = "itzg/mc-proxy:latest";
+export const PROXY_IMAGE = "itzg/mc-proxy:2025.10.0";
 
 /** Datenverzeichnis im Proxy-Container (mc-proxy nutzt /server statt /data). */
 export const PROXY_DATA_DIR = "/server";

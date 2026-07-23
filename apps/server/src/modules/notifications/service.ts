@@ -1,7 +1,11 @@
+import type { Prisma } from "@prisma/client";
 import type { NotificationChannel, NotificationSettingsDto } from "@minecontrol/shared";
 import nodemailer from "nodemailer";
 import { decryptSecret, encryptSecret } from "../../crypto.js";
 import { prisma } from "../../db.js";
+
+/** Client oder (innerhalb einer Transaktion) der Transaktions-Client. */
+type Db = Prisma.TransactionClient;
 
 /** Setting-Schlüssel für die Benachrichtigungs-Konfiguration. */
 const KEYS = {
@@ -18,25 +22,25 @@ const KEYS = {
   taskFailed: "notify.taskFailed",
 } as const;
 
-async function readSetting(key: string): Promise<string | null> {
-  const row = await prisma.setting.findUnique({ where: { key } });
+async function readSetting(key: string, db: Db = prisma): Promise<string | null> {
+  const row = await db.setting.findUnique({ where: { key } });
   return row?.value ?? null;
 }
 
-async function writeSetting(key: string, value: string): Promise<void> {
-  await prisma.setting.upsert({
+async function writeSetting(key: string, value: string, db: Db = prisma): Promise<void> {
+  await db.setting.upsert({
     where: { key },
     create: { key, value },
     update: { value },
   });
 }
 
-async function deleteSetting(key: string): Promise<void> {
-  await prisma.setting.deleteMany({ where: { key } });
+async function deleteSetting(key: string, db: Db = prisma): Promise<void> {
+  await db.setting.deleteMany({ where: { key } });
 }
 
-async function readBool(key: string, fallback: boolean): Promise<boolean> {
-  const value = await readSetting(key);
+async function readBool(key: string, fallback: boolean, db: Db = prisma): Promise<boolean> {
+  const value = await readSetting(key, db);
   return value === null ? fallback : value === "true";
 }
 
@@ -77,13 +81,57 @@ export async function updateNotificationSettings(input: {
   notifyBackupFailed?: boolean;
   notifyTaskFailed?: boolean;
 }): Promise<NotificationSettingsDto> {
-  if (input.discordWebhookUrl !== undefined) {
-    if (input.discordWebhookUrl === "") {
-      await deleteSetting(KEYS.webhookEnc);
-    } else {
-      await writeSetting(KEYS.webhookEnc, encryptSecret(input.discordWebhookUrl));
+  // Alle Upserts/Deletes in einer Transaktion — sonst könnte ein Fehler oder
+  // eine parallele Änderung mittendrin eine teilweise/widersprüchliche
+  // Konfiguration hinterlassen (z. B. neuer SMTP-Host, aber altes Passwort).
+  await prisma.$transaction(async (tx) => {
+    if (input.discordWebhookUrl !== undefined) {
+      if (input.discordWebhookUrl === "") {
+        await deleteSetting(KEYS.webhookEnc, tx);
+      } else {
+        await writeSetting(KEYS.webhookEnc, encryptSecret(input.discordWebhookUrl), tx);
+      }
     }
-  }
+    if (input.emailTo === "") {
+      await Promise.all([
+        deleteSetting(KEYS.emailSmtpHost, tx),
+        deleteSetting(KEYS.emailSmtpPort, tx),
+        deleteSetting(KEYS.emailSmtpSecure, tx),
+        deleteSetting(KEYS.emailSmtpUser, tx),
+        deleteSetting(KEYS.emailSmtpPassEnc, tx),
+        deleteSetting(KEYS.emailFrom, tx),
+        deleteSetting(KEYS.emailTo, tx),
+      ]);
+    } else {
+      if (input.emailSmtpHost !== undefined) {
+        await writeSetting(KEYS.emailSmtpHost, input.emailSmtpHost, tx);
+      }
+      if (input.emailSmtpPort !== undefined) {
+        await writeSetting(KEYS.emailSmtpPort, String(input.emailSmtpPort), tx);
+      }
+      if (input.emailSmtpSecure !== undefined) {
+        await writeSetting(KEYS.emailSmtpSecure, String(input.emailSmtpSecure), tx);
+      }
+      if (input.emailSmtpUser !== undefined) {
+        await writeSetting(KEYS.emailSmtpUser, input.emailSmtpUser, tx);
+      }
+      if (input.emailSmtpPassword !== undefined) {
+        await writeSetting(KEYS.emailSmtpPassEnc, encryptSecret(input.emailSmtpPassword), tx);
+      }
+      if (input.emailFrom !== undefined) await writeSetting(KEYS.emailFrom, input.emailFrom, tx);
+      if (input.emailTo !== undefined) await writeSetting(KEYS.emailTo, input.emailTo, tx);
+    }
+    if (input.notifyServerDown !== undefined) {
+      await writeSetting(KEYS.serverDown, String(input.notifyServerDown), tx);
+    }
+    if (input.notifyBackupFailed !== undefined) {
+      await writeSetting(KEYS.backupFailed, String(input.notifyBackupFailed), tx);
+    }
+    if (input.notifyTaskFailed !== undefined) {
+      await writeSetting(KEYS.taskFailed, String(input.notifyTaskFailed), tx);
+    }
+  });
+
   const emailTouched =
     input.emailTo !== undefined ||
     input.emailSmtpHost !== undefined ||
@@ -92,44 +140,20 @@ export async function updateNotificationSettings(input: {
     input.emailSmtpUser !== undefined ||
     input.emailSmtpPassword !== undefined ||
     input.emailFrom !== undefined;
+  // Erst nach dem erfolgreichen Commit invalidieren — sonst würde eine später
+  // in der Transaktion fehlschlagende Änderung den Cache trotzdem verwerfen.
   if (emailTouched) invalidateEmailTransport();
-  if (input.emailTo === "") {
-    await Promise.all([
-      deleteSetting(KEYS.emailSmtpHost),
-      deleteSetting(KEYS.emailSmtpPort),
-      deleteSetting(KEYS.emailSmtpSecure),
-      deleteSetting(KEYS.emailSmtpUser),
-      deleteSetting(KEYS.emailSmtpPassEnc),
-      deleteSetting(KEYS.emailFrom),
-      deleteSetting(KEYS.emailTo),
-    ]);
-  } else {
-    if (input.emailSmtpHost !== undefined) await writeSetting(KEYS.emailSmtpHost, input.emailSmtpHost);
-    if (input.emailSmtpPort !== undefined) await writeSetting(KEYS.emailSmtpPort, String(input.emailSmtpPort));
-    if (input.emailSmtpSecure !== undefined) await writeSetting(KEYS.emailSmtpSecure, String(input.emailSmtpSecure));
-    if (input.emailSmtpUser !== undefined) await writeSetting(KEYS.emailSmtpUser, input.emailSmtpUser);
-    if (input.emailSmtpPassword !== undefined) {
-      await writeSetting(KEYS.emailSmtpPassEnc, encryptSecret(input.emailSmtpPassword));
-    }
-    if (input.emailFrom !== undefined) await writeSetting(KEYS.emailFrom, input.emailFrom);
-    if (input.emailTo !== undefined) await writeSetting(KEYS.emailTo, input.emailTo);
-  }
-  if (input.notifyServerDown !== undefined) {
-    await writeSetting(KEYS.serverDown, String(input.notifyServerDown));
-  }
-  if (input.notifyBackupFailed !== undefined) {
-    await writeSetting(KEYS.backupFailed, String(input.notifyBackupFailed));
-  }
-  if (input.notifyTaskFailed !== undefined) {
-    await writeSetting(KEYS.taskFailed, String(input.notifyTaskFailed));
-  }
+
   return getNotificationSettings();
 }
 
-/** Sendet eine Nachricht an den Discord-Webhook (best effort). */
-async function postToDiscord(content: string): Promise<void> {
+/** Sendet eine Nachricht an den Discord-Webhook. `true`, wenn sie ankam —
+ * Aufrufer, die nur best effort benachrichtigen wollen (notify*-Funktionen
+ * unten), ignorieren den Rückgabewert einfach; `sendTestNotification`
+ * braucht ihn, um den Test ehrlich zu melden statt immer „ok" zu sagen. */
+async function postToDiscord(content: string): Promise<boolean> {
   const enc = await readSetting(KEYS.webhookEnc);
-  if (!enc) return;
+  if (!enc) return false;
   const url = decryptSecret(enc);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
@@ -142,9 +166,12 @@ async function postToDiscord(content: string): Promise<void> {
     });
     if (!res.ok) {
       console.error(`Discord-Webhook antwortete mit ${res.status}`);
+      return false;
     }
+    return true;
   } catch (err) {
     console.error("Discord-Benachrichtigung fehlgeschlagen:", err);
+    return false;
   } finally {
     clearTimeout(timer);
   }
@@ -206,10 +233,11 @@ async function buildEmailTransport(): Promise<{
   return { transport: cachedTransport.transport, from, to };
 }
 
-/** Sendet eine E-Mail-Benachrichtigung (best effort). */
-async function postToEmail(subject: string, text: string): Promise<void> {
+/** Sendet eine E-Mail-Benachrichtigung. `true`, wenn sie angenommen wurde
+ * (siehe Kommentar bei `postToDiscord`). */
+async function postToEmail(subject: string, text: string): Promise<boolean> {
   const config = await buildEmailTransport();
-  if (!config) return;
+  if (!config) return false;
   try {
     await config.transport.sendMail({
       from: config.from,
@@ -217,25 +245,27 @@ async function postToEmail(subject: string, text: string): Promise<void> {
       subject,
       text,
     });
+    return true;
   } catch (err) {
     console.error("E-Mail-Benachrichtigung fehlgeschlagen:", err);
+    return false;
   }
 }
 
-/** Sendet eine Testnachricht über den angegebenen Kanal (unabhängig von den notify-Schaltern). */
+/** Sendet eine Testnachricht über den angegebenen Kanal (unabhängig von den
+ * notify-Schaltern) und meldet den tatsächlichen Erfolg — nicht nur, dass ein
+ * Kanal konfiguriert ist. */
 export async function sendTestNotification(channel: NotificationChannel): Promise<boolean> {
   if (channel === "discord") {
     if ((await readSetting(KEYS.webhookEnc)) === null) return false;
-    await postToDiscord("✅ MineControl: Test-Benachrichtigung — der Webhook funktioniert.");
-    return true;
+    return postToDiscord("✅ MineControl: Test-Benachrichtigung — der Webhook funktioniert.");
   }
   const config = await buildEmailTransport();
   if (!config) return false;
-  await postToEmail(
+  return postToEmail(
     "MineControl: Test-Benachrichtigung",
     "Diese Testnachricht zeigt, dass der SMTP-Versand funktioniert.",
   );
-  return true;
 }
 
 export async function notifyServerDown(serverName: string): Promise<void> {

@@ -30,6 +30,7 @@ import { authenticate, requireRole } from "../../auth.js";
 import { config } from "../../config.js";
 import { encryptSecret } from "../../crypto.js";
 import { prisma } from "../../db.js";
+import { isHostPortBound, withPortLock } from "../../portLock.js";
 import {
   broadcastServerStatus,
   detachServerStreams,
@@ -46,6 +47,13 @@ import {
   writeServerProperties,
 } from "./docker.js";
 import { listServerDtos, toServerDto } from "./service.js";
+
+/** Interner Signalfehler für einen belegten Port (innerhalb withPortLock geworfen). */
+class PortInUseError extends Error {
+  constructor(readonly port: number) {
+    super(`Port ${port} ist bereits belegt`);
+  }
+}
 
 const editionSchema = z.enum(SERVER_EDITIONS);
 
@@ -136,8 +144,15 @@ const createDockerSchema = z.object({
 
 const lifecycleSchema = z.object({ action: z.enum(LIFECYCLE_ACTIONS) });
 
+// server.properties ist ein naives `key=value`-je-Zeile-Format (kein
+// Escaping wie bei Java Properties) — Zeilenumbrüche in Schlüssel oder Wert
+// würden zusätzliche, nicht vorgesehene Zeilen in die Datei einschleusen.
+const PROPERTY_KEY_REGEX = /^[A-Za-z0-9._-]+$/;
 const propertiesSchema = z.object({
-  properties: z.record(z.string(), z.string().max(200)),
+  properties: z.record(
+    z.string().regex(PROPERTY_KEY_REGEX, "Ungültiger Property-Name"),
+    z.string().max(200).refine((v) => !/[\r\n]/.test(v), "Wert darf keinen Zeilenumbruch enthalten"),
+  ),
 });
 
 const commandSchema = z.object({ command: z.string().min(1) });
@@ -270,47 +285,64 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
         importFilePath = resolved;
       }
 
-      // Port-Kollisionen mit bestehenden Servern vermeiden.
-      const clash = await prisma.server.findFirst({
-        where: {
-          OR: [
-            { port: data.port },
-            { port: rconHostPort },
-            { rconPort: data.port },
-            { rconPort: rconHostPort },
-          ],
-        },
-      });
-      if (clash) {
-        return reply
-          .code(409)
-          .send({ error: "port_in_use", message: `Port ${data.port} ist bereits belegt` });
-      }
-
+      // Port-Prüfung + Anlage serialisiert (withPortLock): sonst könnten zwei
+      // nebenläufige Anfragen beide denselben Port als frei sehen (TOCTOU) —
+      // gilt prozessweit, auch gegen Netzwerk-/Subserver-Anlage (networks/service.ts).
       const rconPassword = randomBytes(16).toString("hex");
-      const server = await prisma.server.create({
-        data: {
-          name: data.name,
-          type: "DOCKER",
-          edition: data.edition,
-          host: "127.0.0.1",
-          port: data.port,
-          rconPort: rconHostPort,
-          rconPasswordEnc: encryptSecret(rconPassword),
-          dockerConfig: JSON.stringify({
-            edition: data.edition,
-            version: data.version,
-            memoryMb: data.memoryMb,
-            seed: data.seed,
-            difficulty: data.difficulty,
-            gamemode: data.gamemode,
-            motd: data.motd,
-            onlineMode: data.onlineMode,
-            modrinthModpack: data.modrinthModpack,
-            curseforgeModpack: data.curseforgeModpack,
-          }),
-        },
-      });
+      let server;
+      try {
+        server = await withPortLock(async () => {
+          const clash = await prisma.server.findFirst({
+            where: {
+              OR: [
+                { port: data.port },
+                { port: rconHostPort },
+                { rconPort: data.port },
+                { rconPort: rconHostPort },
+              ],
+            },
+          });
+          if (clash) {
+            throw new PortInUseError(data.port);
+          }
+          // Zusätzlich die reale Hostbelegung prüfen — die DB kennt nur von
+          // MineControl verwaltete Server, nicht fremde Prozesse/Altlasten.
+          if ((await isHostPortBound(data.port)) || (await isHostPortBound(rconHostPort))) {
+            throw new PortInUseError(data.port);
+          }
+
+          return prisma.server.create({
+            data: {
+              name: data.name,
+              type: "DOCKER",
+              edition: data.edition,
+              host: "127.0.0.1",
+              port: data.port,
+              rconPort: rconHostPort,
+              rconPasswordEnc: encryptSecret(rconPassword),
+              dockerConfig: JSON.stringify({
+                edition: data.edition,
+                version: data.version,
+                memoryMb: data.memoryMb,
+                seed: data.seed,
+                difficulty: data.difficulty,
+                gamemode: data.gamemode,
+                motd: data.motd,
+                onlineMode: data.onlineMode,
+                modrinthModpack: data.modrinthModpack,
+                curseforgeModpack: data.curseforgeModpack,
+              }),
+            },
+          });
+        });
+      } catch (err) {
+        if (err instanceof PortInUseError) {
+          return reply
+            .code(409)
+            .send({ error: "port_in_use", message: `Port ${data.port} ist bereits belegt` });
+        }
+        throw err;
+      }
       await recordAudit({
         userId: request.user?.id,
         serverId: server.id,
@@ -491,17 +523,21 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // server.properties lesen (nur Docker) — Moderator+.
-  app.get("/api/servers/:id/properties", async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const server = await prisma.server.findUnique({ where: { id } });
-    if (!server) {
-      return reply.code(404).send({ error: "not_found", message: "Server nicht gefunden" });
-    }
-    if (server.type !== "DOCKER") {
-      return reply.code(422).send({ error: "unsupported", message: "Nur für Docker-Server" });
-    }
-    return reply.send(await readServerProperties(server));
-  });
+  app.get(
+    "/api/servers/:id/properties",
+    { preHandler: requireRole("MODERATOR") },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const server = await prisma.server.findUnique({ where: { id } });
+      if (!server) {
+        return reply.code(404).send({ error: "not_found", message: "Server nicht gefunden" });
+      }
+      if (server.type !== "DOCKER") {
+        return reply.code(422).send({ error: "unsupported", message: "Nur für Docker-Server" });
+      }
+      return reply.send(await readServerProperties(server));
+    },
+  );
 
   // server.properties speichern (nur Docker) — nur Admin.
   app.put(
@@ -542,13 +578,6 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
       if (!server) {
         return reply.code(404).send({ error: "not_found", message: "Server nicht gefunden" });
       }
-      // Geplante Tasks des Servers aus dem Scheduler nehmen (DB-Cascade räumt Zeilen).
-      const tasks = await prisma.scheduledTask.findMany({
-        where: { serverId: id },
-        select: { id: true },
-      });
-      for (const task of tasks) unscheduleTask(task.id);
-      await deleteAllBackups(id);
       if (server.type === "DOCKER") {
         detachServerStreams(server.id);
         try {
@@ -565,6 +594,15 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
           });
         }
       }
+      // Erst ab hier ist die Löschung sicher (Docker-Teardown ist durch, falls
+      // nötig) — Backups und Scheduler-Abmeldung sind irreversibel bzw. wirken
+      // sofort, dürfen also nicht vor einem möglichen Abbruch oben passieren.
+      const tasks = await prisma.scheduledTask.findMany({
+        where: { serverId: id },
+        select: { id: true },
+      });
+      for (const task of tasks) unscheduleTask(task.id);
+      await deleteAllBackups(id);
       await prisma.server.delete({ where: { id } });
       await recordAudit({
         userId: request.user?.id,

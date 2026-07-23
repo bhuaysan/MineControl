@@ -111,7 +111,9 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
           where: { id },
           data: {
             ...(parsed.data.role ? { role: parsed.data.role } : {}),
-            ...(passwordHash ? { passwordHash } : {}),
+            ...(passwordHash
+              ? { passwordHash, sessionVersion: { increment: 1 } }
+              : {}),
           },
         });
       });

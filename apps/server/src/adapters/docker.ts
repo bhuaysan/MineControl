@@ -29,6 +29,49 @@ export function isProvisioning(serverId: string): boolean {
   return provisioning.has(serverId);
 }
 
+/**
+ * Kurzes Oberlimit für schnelle Docker-Abfragen (`inspect`). Normalfall wenige
+ * Millisekunden; der Guard greift nur, wenn der Docker-Daemon einen Request gar
+ * nicht beantwortet.
+ */
+const INSPECT_TIMEOUT_MS = 6000;
+
+/**
+ * Oberlimit für Lifecycle-Operationen. Bewusst über der 60-s-Stop-Kulanz
+ * ({@link DockerAdapter.stop}), damit ein sauberes SIGTERM→SIGKILL nicht
+ * abgeschnitten wird — fängt also nur einen echten Daemon-Hänger ab.
+ */
+const LIFECYCLE_TIMEOUT_MS = 75000;
+
+/**
+ * Umschließt eine dockerode-Operation mit einem harten Timeout. Dockerode-Aufrufe
+ * haben von Haus aus KEIN Zeitlimit: Beantwortet der Docker-Daemon einen
+ * Socket-Request nie (Daemon unter Last/gestört), blockiert die Operation
+ * unbegrenzt. Bei `getStatus()` vergiftet ein solcher Hänger den Status-Cache
+ * (`inFlightStatus` in modules/servers/service.ts) dauerhaft — der Server bleibt
+ * dann bis zum Backend-Neustart auf UNKNOWN und Lifecycle-Aktionen scheitern mit
+ * 502. Der zugrunde liegende Socket-Request läuft nach dem Timeout ggf. noch aus;
+ * das ist akzeptiert, weil der Normalfall in Millisekunden abschließt.
+ */
+function withTimeout<T>(op: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`Docker-Operation "${label}" nach ${ms} ms ohne Antwort abgebrochen`)),
+      ms,
+    );
+    op.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e as Error);
+      },
+    );
+  });
+}
+
 export interface DockerAdapterConfig {
   /** Veröffentlichter MC-Port auf dem Host (für Ping). */
   port: number;
@@ -75,27 +118,47 @@ export class DockerAdapter implements ServerAdapter {
     return docker.getContainer(containerName(this.serverId));
   }
 
-  /** Liest den Docker-Container-Zustand; `null`, wenn kein Container existiert. */
-  private async inspectState(): Promise<{
-    running: boolean;
-    restarting: boolean;
-  } | null> {
+  /**
+   * Liest den Docker-Container-Zustand. `"not_found"` nur bei einem echten
+   * 404 (Container existiert nicht) — jeder andere Fehler (Socket-/
+   * Berechtigungs-/Daemon-Störung) wird als `"error"` unterschieden, sonst
+   * sähe ein kaputter Docker-Zugriff genauso aus wie ein normal gestoppter
+   * Server (OFFLINE), obwohl es sich um ein Infrastrukturproblem handelt.
+   */
+  private async inspectState(): Promise<
+    { running: boolean; restarting: boolean } | "not_found" | "error"
+  > {
     try {
-      const info = await this.container().inspect();
+      const info = await withTimeout(
+        this.container().inspect(),
+        INSPECT_TIMEOUT_MS,
+        `inspect ${this.serverId}`,
+      );
       return {
         running: info.State.Running === true,
         restarting: info.State.Restarting === true,
       };
-    } catch {
-      return null; // 404 → Container existiert (noch) nicht.
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode === 404) return "not_found";
+      console.error(`Docker-inspect fehlgeschlagen (${this.serverId}):`, err);
+      return "error";
     }
   }
 
   async getStatus(): Promise<ServerStatus> {
     const state = await this.inspectState();
 
+    if (state === "error") {
+      return {
+        state: "ERROR",
+        online: false,
+        edition: this.net.editionValue,
+        players: { online: 0, max: 0, sample: [] },
+      };
+    }
+
     // Container wird gerade erstellt oder existiert noch nicht.
-    if (!state) {
+    if (state === "not_found") {
       return {
         state: isProvisioning(this.serverId) ? "STARTING" : "OFFLINE",
         online: false,
@@ -147,20 +210,20 @@ export class DockerAdapter implements ServerAdapter {
   }
 
   async start(): Promise<void> {
-    await this.container().start();
+    await withTimeout(this.container().start(), LIFECYCLE_TIMEOUT_MS, "start");
   }
 
   async stop(): Promise<void> {
     // itzg fängt SIGTERM ab und stoppt MC sauber; 60 s Kulanz bis SIGKILL.
-    await this.container().stop({ t: 60 });
+    await withTimeout(this.container().stop({ t: 60 }), LIFECYCLE_TIMEOUT_MS, "stop");
   }
 
   async restart(): Promise<void> {
-    await this.container().restart({ t: 60 });
+    await withTimeout(this.container().restart({ t: 60 }), LIFECYCLE_TIMEOUT_MS, "restart");
   }
 
   async kill(): Promise<void> {
-    await this.container().kill();
+    await withTimeout(this.container().kill(), LIFECYCLE_TIMEOUT_MS, "kill");
   }
 
   /**
@@ -244,7 +307,12 @@ export class DockerAdapter implements ServerAdapter {
     }
   }
 
-  /** Öffnet eine hijack-fähige Exec-Session (für Datei-Lesen/Schreiben). */
+  /**
+   * Öffnet eine hijack-fähige Exec-Session (für Datei-Lesen/Schreiben).
+   * Wirft, wenn der Befehl mit einem Exit-Code ≠ 0 endet — sonst würden
+   * fehlgeschlagene mv/find/rm/Konfigurationsbefehle stillschweigend als
+   * Erfolg durchgehen.
+   */
   async exec(cmd: string[], stdin?: string): Promise<string> {
     const container = this.container();
     const exec = await container.exec({
@@ -258,15 +326,27 @@ export class DockerAdapter implements ServerAdapter {
     const err = new PassThrough();
     docker.modem.demuxStream(stream, out, err);
 
-    const chunks: Buffer[] = [];
-    out.on("data", (c: Buffer) => chunks.push(c));
+    const outChunks: Buffer[] = [];
+    const errChunks: Buffer[] = [];
+    out.on("data", (c: Buffer) => outChunks.push(c));
+    // stderr muss mitgelesen werden — sonst füllt sich der Stream-Puffer und
+    // blockiert den Befehl, sobald er genug auf stderr schreibt.
+    err.on("data", (c: Buffer) => errChunks.push(c));
 
     if (stdin) {
       stream.write(stdin);
       stream.end();
     }
     await new Promise<void>((resolve) => stream.on("end", resolve));
-    return Buffer.concat(chunks).toString("utf8");
+
+    const { ExitCode } = await exec.inspect();
+    if (ExitCode) {
+      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
+      throw new Error(
+        `Befehl "${cmd.join(" ")}" fehlgeschlagen (Exit ${ExitCode})${stderr ? `: ${stderr}` : ""}`,
+      );
+    }
+    return Buffer.concat(outChunks).toString("utf8");
   }
 }
 

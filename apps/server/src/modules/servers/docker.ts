@@ -4,6 +4,7 @@ import type { Server } from "@prisma/client";
 import * as tar from "tar-stream";
 import { config } from "../../config.js";
 import { markProvisioning } from "../../adapters/docker.js";
+import { prisma } from "../../db.js";
 import { importArchiveIntoVolume } from "./import.js";
 import {
   CONTAINER_MC_PORT,
@@ -162,6 +163,11 @@ export async function provisionDockerServer(
   params: ProvisionParams,
 ): Promise<void> {
   markProvisioning(server.id, true);
+  // Neuer Versuch → alten Fehler löschen, sonst bliebe er nach einem
+  // erfolgreichen Retry stehen.
+  await prisma.server
+    .update({ where: { id: server.id }, data: { lastProvisionError: null } })
+    .catch(() => {});
   await broadcastServerStatus(server.id);
   try {
     pushConsoleLine(server.id, `» Richte Server „${server.name}" ein …`);
@@ -175,7 +181,13 @@ export async function provisionDockerServer(
     await createDockerAdapter(server).start();
     pushConsoleLine(server.id, "» Container gestartet — Minecraft bootet …");
   } catch (err) {
-    pushConsoleLine(server.id, `Fehler beim Einrichten: ${(err as Error).message}`);
+    const message = (err as Error).message;
+    pushConsoleLine(server.id, `Fehler beim Einrichten: ${message}`);
+    // Persistiert — sonst sieht man nach einem Prozess-Neustart nur noch ein
+    // unauffälliges „offline", ohne dass der eigentliche Fehler sichtbar ist.
+    await prisma.server
+      .update({ where: { id: server.id }, data: { lastProvisionError: message } })
+      .catch(() => {});
     throw err;
   } finally {
     // Staging-Upload nach dem Import wieder entfernen (best effort).
@@ -292,7 +304,10 @@ function mergeProperties(raw: string, changes: Record<string, string>): string {
   return lines.join("\n");
 }
 
-/** Liest server.properties aus dem Container-Volume. `{}` falls noch nicht da. */
+/** Liest server.properties aus dem Container-Volume. `{}` falls noch nicht da —
+ * ein anderer Fehler (Docker-/Tar-Störung) wird NICHT damit gleichgesetzt und
+ * wirft weiter, sonst hielten Aufrufer eine transiente Störung fälschlich für
+ * „Datei existiert nicht". */
 export async function readServerProperties(
   server: Server,
 ): Promise<Record<string, string>> {
@@ -300,8 +315,9 @@ export async function readServerProperties(
   try {
     const archive = await container.getArchive({ path: "/data/server.properties" });
     return parseProperties(await extractSingleFile(archive));
-  } catch {
-    return {};
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 404) return {};
+    throw err;
   }
 }
 
@@ -315,8 +331,12 @@ export async function writeServerProperties(
   try {
     const archive = await container.getArchive({ path: "/data/server.properties" });
     raw = await extractSingleFile(archive);
-  } catch {
-    /* Datei noch nicht vorhanden → neu anlegen. */
+  } catch (err) {
+    // Nur ein echtes 404 (Datei existiert noch nicht) neu anlegen lassen —
+    // jeder andere Fehler bricht ab, statt mit raw="" weiterzumachen: sonst
+    // würde der folgende Write die bestehende Datei durch eine minimale neue
+    // (nur mit `changes`) ersetzen, sobald das Lesen nur transient scheiterte.
+    if ((err as { statusCode?: number }).statusCode !== 404) throw err;
   }
   const merged = mergeProperties(raw, changes);
   const pack = tar.pack();

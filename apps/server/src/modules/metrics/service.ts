@@ -243,11 +243,30 @@ async function prune(days: number): Promise<void> {
   await prisma.metricSample.deleteMany({ where: { timestamp: { lt: cutoff } } });
 }
 
+let sampling = false;
+
+/** Ruft `sampleAll()` auf, überspringt aber, falls ein Durchgang noch läuft —
+ * sonst können sich Durchläufe überlappen (doppelte Sessions, konkurrierende
+ * Auto-Restarts/Benachrichtigungen), wenn ein Sample-Zyklus länger als
+ * `intervalMs` dauert (z. B. hängende Docker-/RCON-Aufrufe). */
+async function sampleAllExclusive(): Promise<void> {
+  if (sampling) {
+    console.warn("Metrik-Sample übersprungen — vorheriger Durchgang läuft noch.");
+    return;
+  }
+  sampling = true;
+  try {
+    await sampleAll();
+  } finally {
+    sampling = false;
+  }
+}
+
 /** Startet den periodischen Sampler (Standard: alle 60 s, Aufbewahrung 7 Tage). */
 export function startMetricSampler(intervalMs = 60_000): void {
   // Erste Messung leicht verzögert, damit der Serverstart nicht blockiert wird.
-  setTimeout(() => void sampleAll(), 5_000);
-  setInterval(() => void sampleAll(), intervalMs);
+  setTimeout(() => void sampleAllExclusive(), 5_000);
+  setInterval(() => void sampleAllExclusive(), intervalMs);
   setInterval(() => void prune(7), 3_600_000);
 }
 

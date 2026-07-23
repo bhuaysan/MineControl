@@ -26,17 +26,6 @@ import { userRoutes } from "./modules/users/routes.js";
 import { worldRoutes } from "./modules/world/routes.js";
 import { registerWebsocket } from "./ws/index.js";
 
-// Sicherheitsnetz: Das Backend steuert Docker & RCON — ein einzelner
-// asynchroner Fehler (z. B. ein Socket-`error`-Event einer flatterhaften
-// RCON-Verbindung zu einem bootenden Server) darf den ganzen Prozess nicht
-// abstürzen lassen. Solche Fehler werden protokolliert statt fatal behandelt.
-process.on("uncaughtException", (err) => {
-  console.error("Unbehandelte Ausnahme (Prozess bleibt am Leben):", err);
-});
-process.on("unhandledRejection", (reason) => {
-  console.error("Unbehandelte Promise-Ablehnung:", reason);
-});
-
 async function main(): Promise<void> {
   const app = Fastify({
     logger: {
@@ -45,6 +34,10 @@ async function main(): Promise<void> {
         ? undefined
         : { target: "pino-pretty", options: { translateTime: "HH:MM:ss" } },
     },
+    // Läuft produktiv hinter Caddy (deploy/Caddyfile) als einzigem Reverse-Proxy
+    // — request.ip muss den echten Client aus X-Forwarded-For lesen, sonst
+    // träfe IP-basiertes Rate-Limiting (Login/2FA) alle Nutzer als eine Quelle.
+    trustProxy: true,
   });
 
   await app.register(cookie, { secret: config.sessionSecret });
@@ -80,14 +73,41 @@ async function main(): Promise<void> {
   await startScheduler();
   startMetricSampler();
 
-  const shutdown = async (signal: string): Promise<void> => {
-    app.log.info(`${signal} empfangen — fahre herunter`);
-    await app.close();
-    await prisma.$disconnect();
-    process.exit(0);
+  // Kontrollierter Shutdown statt Weiterlaufen in undefiniertem Zustand: eine
+  // uncaughtException/unhandledRejection kann den Prozess (Docker-Steuerung,
+  // offene RCON-/Log-Streams) teilmutiert zurücklassen — sicherer ist, den
+  // Prozess sauber zu beenden und den Supervisor (docker-compose
+  // `restart: unless-stopped`, siehe deploy/docker-compose.yml) neu starten
+  // zu lassen, als mit unbekanntem Zustand weiterzumachen.
+  let shuttingDown = false;
+  const shutdown = async (reason: string, exitCode: number): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    app.log.error(`${reason} — fahre kontrolliert herunter (Exit ${exitCode})`);
+    // Falls das Herunterfahren selbst hängt (z. B. ein Docker-Log-Stream, der
+    // nicht sauber schließt) — nach kurzer Frist trotzdem hart beenden.
+    const forceExit = setTimeout(() => process.exit(exitCode), 10_000);
+    forceExit.unref();
+    try {
+      await app.close();
+      await prisma.$disconnect();
+    } catch (err) {
+      console.error("Fehler beim Herunterfahren:", err);
+    } finally {
+      clearTimeout(forceExit);
+      process.exit(exitCode);
+    }
   };
-  process.on("SIGINT", () => void shutdown("SIGINT"));
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT", 0));
+  process.on("SIGTERM", () => void shutdown("SIGTERM", 0));
+  process.on("uncaughtException", (err) => {
+    console.error("Unbehandelte Ausnahme:", err);
+    void shutdown("uncaughtException", 1);
+  });
+  process.on("unhandledRejection", (reason) => {
+    console.error("Unbehandelte Promise-Ablehnung:", reason);
+    void shutdown("unhandledRejection", 1);
+  });
 
   await app.listen({ port: config.port, host: config.host });
 }

@@ -62,6 +62,9 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 # ---------------------------------------------------------------------------
 # Web-Stufe: Caddy liefert die SPA aus und terminiert TLS
 # ---------------------------------------------------------------------------
-FROM caddy:2 AS web
+# Minor-Version gepinnt (statt `:2`) — konsistent mit node:22-bookworm-slim
+# oben: reproduzierbarer als eine floatende Major-Tag, ohne bei jedem
+# Patch-Release manuell nachziehen zu müssen.
+FROM caddy:2.11 AS web
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /app/apps/web/dist /srv

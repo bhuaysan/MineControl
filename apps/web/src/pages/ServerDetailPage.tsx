@@ -178,6 +178,12 @@ export function ServerDetailPage() {
         </p>
       )}
 
+      {server.provisionError && (
+        <p className="mb-4 rounded-md border border-status-error/40 bg-status-error/10 px-3 py-2 text-sm text-status-error">
+          Einrichtung fehlgeschlagen: {server.provisionError}
+        </p>
+      )}
+
       <div className="mb-4 flex gap-1 border-b border-neutral-800">
         {tabs.map(([key, label]) => (
           <button

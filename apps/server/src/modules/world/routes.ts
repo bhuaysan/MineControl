@@ -7,9 +7,9 @@ import { containerName, docker } from "../../adapters/dockerClient.js";
 import { authenticate, requireRole } from "../../auth.js";
 import { prisma } from "../../db.js";
 import { recordAudit } from "../audit/service.js";
-import { readServerProperties } from "../servers/docker.js";
 import {
   WorldError,
+  activeLevel,
   cancelPregen,
   createWorld,
   deleteWorld,
@@ -18,16 +18,6 @@ import {
   switchWorld,
   uploadWorld,
 } from "./service.js";
-
-/** Ermittelt den Weltnamen (server.properties `level-name`, Standard „world"). */
-async function levelName(server: Server): Promise<string> {
-  try {
-    const props = await readServerProperties(server);
-    return props["level-name"] || "world";
-  } catch {
-    return "world";
-  }
-}
 
 const nameSchema = z.string().regex(WORLD_NAME_REGEX, "Ungültiger Weltname");
 const switchSchema = z.object({ name: nameSchema });
@@ -251,7 +241,7 @@ export async function worldRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(422).send({ error: "unsupported", message: "Nur für Docker-Server" });
       }
 
-      const level = await levelName(server);
+      const level = await activeLevel(server);
       const container = docker.getContainer(containerName(server.id));
 
       let archive: NodeJS.ReadableStream;

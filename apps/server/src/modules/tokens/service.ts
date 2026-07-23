@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { ApiToken, Role } from "@prisma/client";
 import type { ApiTokenDto } from "@minecontrol/shared";
+import { ROLE_RANK } from "@minecontrol/shared";
 import { prisma } from "../../db.js";
 
 const PREFIX = "mc_";
@@ -74,9 +75,16 @@ export async function verifyToken(
     .update({ where: { id: token.id }, data: { lastUsedAt: new Date() } })
     .catch(() => {});
 
+  // Ein Token darf nie mehr Rechte gewähren, als der Benutzer *aktuell* hat —
+  // sonst überlebt ein Admin-Downgrade in einem zuvor ausgestellten Token.
+  const effectiveRole: Role =
+    ROLE_RANK[token.user.role] < ROLE_RANK[token.role]
+      ? token.user.role
+      : token.role;
+
   return {
     userId: token.userId,
     username: `token:${token.name}`,
-    role: token.role,
+    role: effectiveRole,
   };
 }
