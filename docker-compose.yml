@@ -1,0 +1,72 @@
+# MineControl — Produktiv-Deployment.
+#
+# Zwei Container:
+#   app  — Fastify-Backend (API + WebSocket), erzeugt/steuert die Minecraft-
+#          Container über den gemounteten Docker-Socket.
+#   web  — Caddy: liefert die SPA aus und terminiert TLS (Reverse-Proxy).
+#
+# Warum `network_mode: host` für app?
+#   Die verwalteten Minecraft-Container publizieren ihre Ports bewusst nur an
+#   127.0.0.1 des Hosts (Security-Design, PLANNING.md §7). Das Backend erreicht
+#   sie per RCON/Ping über 127.0.0.1:<port>. Mit Host-Networking ist das
+#   Container-127.0.0.1 identisch mit dem Host-Loopback → keine Ports müssen
+#   nach außen geöffnet werden. (Host-Networking ist Linux-spezifisch.)
+#
+# Vorbereitung: `.env` aus `.env.example` erzeugen und Secrets setzen.
+
+services:
+  app:
+    build:
+      context: .
+      target: runtime
+      # Build über das Host-Netz (zuverlässiger Paket-/Registry-Zugriff).
+      network: host
+    image: minecontrol-app:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      NODE_ENV: production
+      # Nur auf dem Loopback lauschen — von außen kommt man ausschließlich
+      # über Caddy (TLS) rein.
+      HOST: 127.0.0.1
+      PORT: "3000"
+      DATABASE_URL: "file:/data/dev.db"
+      BACKUP_DIR: /data/backups
+      IMPORT_DIR: /data/imports
+      IMPORT_STAGING_DIR: /data/imports/.staging
+      IMPORT_MAX_MB: ${IMPORT_MAX_MB:-10240}
+      MODS_MAX_MB: ${MODS_MAX_MB:-200}
+      WEB_ORIGIN: ${MC_WEB_ORIGIN:-https://localhost}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET in .env setzen}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY in .env setzen (openssl rand -hex 32)}
+      SEED_ADMIN_USER: ${SEED_ADMIN_USER:-admin}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD in .env setzen (Erststart-Admin)}
+      CF_API_KEY: ${CF_API_KEY:-}
+    volumes:
+      # Persistente Daten: SQLite-DB, Backups, Import-Staging.
+      - mc-data:/data
+      # Docker-Socket = Root-Äquivalent auf dem Host (PLANNING.md §7).
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  web:
+    build:
+      context: .
+      target: web
+      network: host
+    image: minecontrol-web:latest
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - app
+    environment:
+      # localhost = interne CA (LAN); eigene Domain = automatisches Let's Encrypt.
+      MC_SITE_ADDRESS: ${MC_SITE_ADDRESS:-localhost}
+      MC_UPSTREAM: 127.0.0.1:3000
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  mc-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,25 @@
+# Abhängigkeiten & Build-Ausgaben werden im Image frisch erzeugt.
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+
+# Secrets & lokale Umgebung (niemals ins Image).
+**/.env
+**/.env.*
+!**/.env.example
+
+# Lokale SQLite-DB und Laufzeitdaten.
+**/*.db
+**/*.db-journal
+backups/
+apps/server/backups/
+imports/
+apps/server/imports/
+
+# VCS / Logs / Editor.
+.git
+.gitignore
+**/*.log
+.idea/
+.vscode/
+.DS_Store

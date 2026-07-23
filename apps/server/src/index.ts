@@ -17,6 +17,7 @@ import { networkRoutes } from "./modules/networks/routes.js";
 import { notificationRoutes } from "./modules/notifications/routes.js";
 import { playerRoutes } from "./modules/players/routes.js";
 import { serverRoutes } from "./modules/servers/routes.js";
+import { ensureSeedAdmin } from "./seed.js";
 import { taskRoutes } from "./modules/tasks/routes.js";
 import { startScheduler } from "./modules/tasks/service.js";
 import { tokenRoutes } from "./modules/tokens/routes.js";
@@ -71,6 +72,9 @@ async function main(): Promise<void> {
   await app.register(twoFactorRoutes);
   await app.register(worldRoutes);
   await registerWebsocket(app);
+
+  // Erststart-Admin anlegen, falls noch kein Benutzer existiert (idempotent).
+  await ensureSeedAdmin();
 
   // Hintergrunddienste: geplante Tasks (cron) + periodische Metrik-Erfassung.
   await startScheduler();

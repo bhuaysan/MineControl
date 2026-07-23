@@ -1,0 +1,21 @@
+# Caddy-Konfiguration für MineControl.
+#
+# - Liefert die gebaute SPA aus /srv aus (Client-seitiges Routing via try_files).
+# - Proxyt /api und /ws an das Backend (Standard 127.0.0.1:3000).
+# - Automatisches HTTPS:
+#     * MC_SITE_ADDRESS=localhost  → Caddy stellt ein Zertifikat der lokalen
+#       internen CA aus (Browser-Warnung, für LAN-Tests ok).
+#     * MC_SITE_ADDRESS=mc.example.com → Caddy holt automatisch ein echtes
+#       Let's-Encrypt-Zertifikat (Port 80/443 aus dem Internet erreichbar nötig).
+{$MC_SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	# API und WebSocket ans Backend weiterleiten.
+	@backend path /api/* /ws /ws/*
+	reverse_proxy @backend {$MC_UPSTREAM:127.0.0.1:3000}
+
+	# Alles andere: statische SPA-Dateien, sonst index.html (SPA-Fallback).
+	root * /srv
+	try_files {path} /index.html
+	file_server
+}
