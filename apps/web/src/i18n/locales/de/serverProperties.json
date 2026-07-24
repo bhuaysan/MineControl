@@ -1,0 +1,25 @@
+{
+  "fields": {
+    "motd": "MOTD",
+    "difficulty": "Schwierigkeit",
+    "gamemode": "Spielmodus",
+    "max-players": "Max. Spieler",
+    "view-distance": "Sichtweite",
+    "simulation-distance": "Simulationsdistanz",
+    "spawn-protection": "Spawn-Schutz",
+    "pvp": "PvP",
+    "online-mode": "Online-Modus",
+    "allow-nether": "Nether erlauben",
+    "allow-flight": "Fliegen erlauben",
+    "hardcore": "Hardcore",
+    "white-list": "Whitelist aktiv",
+    "enforce-whitelist": "Whitelist erzwingen"
+  },
+  "on": "an",
+  "off": "aus",
+  "loading": "Lade Einstellungen…",
+  "readError": "server.properties konnte nicht gelesen werden. Der Server muss dafür mindestens einmal erstellt worden sein.",
+  "empty": "Noch keine server.properties vorhanden – der Server generiert sie beim ersten Start.",
+  "hint": "Wirkt nach dem nächsten Neustart des Servers.",
+  "saved": "Gespeichert."
+}

@@ -1,0 +1,9 @@
+{
+  "title": "Audit log",
+  "table": {
+    "time": "Time",
+    "user": "User",
+    "action": "Action",
+    "details": "Details"
+  }
+}

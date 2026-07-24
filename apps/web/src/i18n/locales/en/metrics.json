@@ -1,0 +1,18 @@
+{
+  "ranges": {
+    "1h": "1h",
+    "6h": "6h",
+    "24h": "24h",
+    "7d": "7d"
+  },
+  "metrics": {
+    "players": "Players",
+    "cpu": "CPU",
+    "ram": "RAM",
+    "tps": "TPS"
+  },
+  "loading": "Loading history…",
+  "notEnoughData": "Not enough data yet – metrics are recorded every minute.",
+  "chartLabel": "{{metric}} history",
+  "current": "current:"
+}

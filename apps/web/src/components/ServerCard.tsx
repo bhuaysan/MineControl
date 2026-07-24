@@ -1,4 +1,5 @@
 import type { ServerDto } from "@minecontrol/shared";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { StatusBadge } from "./StatusBadge.js";
 
@@ -12,6 +13,7 @@ const STATE_BORDER: Record<string, string> = {
 };
 
 export function ServerCard({ server }: { server: ServerDto }) {
+  const { t } = useTranslation("serverCard");
   const { status } = server;
   return (
     <Link
@@ -25,23 +27,23 @@ export function ServerCard({ server }: { server: ServerDto }) {
           <h3 className="font-semibold text-neutral-100">{server.name}</h3>
           <p className="text-xs text-neutral-400">
             {status.version ?? server.edition} ·{" "}
-            {server.type === "DOCKER" ? "Docker" : "Extern"}
+            {server.type === "DOCKER" ? t("type.docker") : t("type.external")}
           </p>
         </div>
         <StatusBadge state={status.state} />
       </div>
 
       <div className="mt-3 flex items-center gap-4 text-sm text-neutral-300">
-        <span title="Spieler online">
+        <span title={t("playersOnline")}>
           👥 {status.players.online}
           {status.players.max ? `/${status.players.max}` : ""}
         </span>
-        <span className="truncate text-neutral-500">{server.host}:{server.port}</span>
+        <span className="truncate text-neutral-500">
+          {server.host}:{server.port}
+        </span>
       </div>
 
-      {status.motd && (
-        <p className="mt-2 line-clamp-1 text-xs text-neutral-500">{status.motd}</p>
-      )}
+      {status.motd && <p className="mt-2 line-clamp-1 text-xs text-neutral-500">{status.motd}</p>}
     </Link>
   );
 }

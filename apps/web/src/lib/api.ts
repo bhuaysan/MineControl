@@ -52,6 +52,7 @@ import type {
   UpdateUserRequest,
   UserDto,
 } from "@minecontrol/shared";
+import i18n from "../i18n/index.js";
 
 /** Fehler mit HTTP-Status, Server-Nachricht und (optional) Fehler-Code. */
 export class ApiRequestError extends Error {
@@ -102,8 +103,7 @@ export const api = {
 
   // Zwei-Faktor-Authentifizierung (TOTP)
   twoFactorStatus: () => request<{ enabled: boolean }>("/api/2fa/status"),
-  twoFactorSetup: () =>
-    request<TwoFactorSetupResponse>("/api/2fa/setup", { method: "POST" }),
+  twoFactorSetup: () => request<TwoFactorSetupResponse>("/api/2fa/setup", { method: "POST" }),
   twoFactorEnable: (code: string) =>
     request<{ enabled: boolean }>("/api/2fa/enable", {
       method: "POST",
@@ -156,7 +156,7 @@ export const api = {
           reject(new ApiRequestError(xhr.status, message));
         }
       };
-      xhr.onerror = () => reject(new ApiRequestError(0, "Upload fehlgeschlagen"));
+      xhr.onerror = () => reject(new ApiRequestError(0, i18n.t("common:errors.uploadFailed")));
       xhr.send(form);
     }),
   lifecycleAction: (id: string, action: LifecycleAction) =>
@@ -169,8 +169,7 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ enabled }),
     }),
-  getProperties: (id: string) =>
-    request<ServerPropertiesDto>(`/api/servers/${id}/properties`),
+  getProperties: (id: string) => request<ServerPropertiesDto>(`/api/servers/${id}/properties`),
   updateProperties: (id: string, properties: Record<string, string>) =>
     request<ServerPropertiesDto>(`/api/servers/${id}/properties`, {
       method: "PUT",
@@ -187,17 +186,15 @@ export const api = {
       body: JSON.stringify(body),
     }),
   deleteServer: (id: string, keepWorld = false) =>
-    request<{ ok: true }>(
-      `/api/servers/${id}${keepWorld ? "?keepWorld=true" : ""}`,
-      { method: "DELETE" },
-    ),
+    request<{ ok: true }>(`/api/servers/${id}${keepWorld ? "?keepWorld=true" : ""}`, {
+      method: "DELETE",
+    }),
   sendCommand: (id: string, command: string) =>
     request<SendCommandResponse>(`/api/servers/${id}/command`, {
       method: "POST",
       body: JSON.stringify({ command }),
     }),
-  getPlayers: (id: string) =>
-    request<OnlinePlayer[]>(`/api/servers/${id}/players`),
+  getPlayers: (id: string) => request<OnlinePlayer[]>(`/api/servers/${id}/players`),
   playerAction: (id: string, body: PlayerActionRequest) =>
     request<PlayerActionResponse>(`/api/servers/${id}/players/action`, {
       method: "POST",
@@ -238,9 +235,7 @@ export const api = {
 
   // Datei-Manager
   listFiles: (id: string, path: string) =>
-    request<FileListResponse>(
-      `/api/servers/${id}/files?path=${encodeURIComponent(path)}`,
-    ),
+    request<FileListResponse>(`/api/servers/${id}/files?path=${encodeURIComponent(path)}`),
   readFile: (id: string, path: string) =>
     request<FileContentResponse>(
       `/api/servers/${id}/files/content?path=${encodeURIComponent(path)}`,
@@ -256,17 +251,17 @@ export const api = {
       body: JSON.stringify({ path }),
     }),
   deleteFile: (id: string, path: string) =>
-    request<{ ok: true }>(
-      `/api/servers/${id}/files?path=${encodeURIComponent(path)}`,
-      { method: "DELETE" },
-    ),
+    request<{ ok: true }>(`/api/servers/${id}/files?path=${encodeURIComponent(path)}`, {
+      method: "DELETE",
+    }),
   uploadFile: async (id: string, dir: string, file: File) => {
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch(
-      `/api/servers/${id}/files/upload?path=${encodeURIComponent(dir)}`,
-      { method: "POST", credentials: "include", body: form },
-    );
+    const res = await fetch(`/api/servers/${id}/files/upload?path=${encodeURIComponent(dir)}`, {
+      method: "POST",
+      credentials: "include",
+      body: form,
+    });
     if (!res.ok) {
       let message = res.statusText;
       try {
@@ -301,10 +296,11 @@ export const api = {
   uploadWorld: async (id: string, name: string, file: File) => {
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch(
-      `/api/servers/${id}/worlds/upload?name=${encodeURIComponent(name)}`,
-      { method: "POST", credentials: "include", body: form },
-    );
+    const res = await fetch(`/api/servers/${id}/worlds/upload?name=${encodeURIComponent(name)}`, {
+      method: "POST",
+      credentials: "include",
+      body: form,
+    });
     if (!res.ok) {
       let message = res.statusText;
       try {
@@ -328,9 +324,7 @@ export const api = {
 
   // Plugins/Mods (Modrinth)
   searchMods: (id: string, q: string) =>
-    request<ModSearchHitDto[]>(
-      `/api/servers/${id}/mods/search?q=${encodeURIComponent(q)}`,
-    ),
+    request<ModSearchHitDto[]>(`/api/servers/${id}/mods/search?q=${encodeURIComponent(q)}`),
   listMods: (id: string) => request<InstalledModDto[]>(`/api/servers/${id}/mods`),
   installMod: (id: string, projectId: string) =>
     request<{ filename: string }>(`/api/servers/${id}/mods/install`, {
@@ -338,10 +332,9 @@ export const api = {
       body: JSON.stringify({ projectId }),
     }),
   deleteMod: (id: string, file: string) =>
-    request<{ ok: true }>(
-      `/api/servers/${id}/mods?file=${encodeURIComponent(file)}`,
-      { method: "DELETE" },
-    ),
+    request<{ ok: true }>(`/api/servers/${id}/mods?file=${encodeURIComponent(file)}`, {
+      method: "DELETE",
+    }),
   installModFromUrl: (id: string, url: string) =>
     request<{ filename: string }>(`/api/servers/${id}/mods/from-url`, {
       method: "POST",
@@ -372,17 +365,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ file, enabled }),
     }),
-  modUpdates: (id: string) =>
-    request<PluginUpdateDto[]>(`/api/servers/${id}/mods/updates`),
+  modUpdates: (id: string) => request<PluginUpdateDto[]>(`/api/servers/${id}/mods/updates`),
   updateMod: (id: string, file: string) =>
     request<{ filename: string }>(`/api/servers/${id}/mods/update`, {
       method: "POST",
       body: JSON.stringify({ file }),
     }),
   pluginConfig: (id: string, file: string) =>
-    request<PluginConfigListDto>(
-      `/api/servers/${id}/mods/config?file=${encodeURIComponent(file)}`,
-    ),
+    request<PluginConfigListDto>(`/api/servers/${id}/mods/config?file=${encodeURIComponent(file)}`),
   readPluginConfig: (id: string, file: string, path: string) =>
     request<PluginConfigFileDto>(
       `/api/servers/${id}/mods/config/file?file=${encodeURIComponent(file)}&path=${encodeURIComponent(path)}`,
@@ -394,28 +384,23 @@ export const api = {
     ),
 
   // LuckPerms (Berechtigungen)
-  lpStatus: (id: string) =>
-    request<LuckPermsStatusDto>(`/api/servers/${id}/luckperms`),
+  lpStatus: (id: string) => request<LuckPermsStatusDto>(`/api/servers/${id}/luckperms`),
   lpInstall: (id: string) =>
     request<LuckPermsInstallResponse>(`/api/servers/${id}/luckperms/install`, {
       method: "POST",
     }),
-  lpListGroups: (id: string) =>
-    request<LpGroupSummaryDto[]>(`/api/servers/${id}/luckperms/groups`),
+  lpListGroups: (id: string) => request<LpGroupSummaryDto[]>(`/api/servers/${id}/luckperms/groups`),
   lpCreateGroup: (id: string, name: string) =>
     request<{ ok: true }>(`/api/servers/${id}/luckperms/groups`, {
       method: "POST",
       body: JSON.stringify({ name }),
     }),
   lpDeleteGroup: (id: string, name: string) =>
-    request<{ ok: true }>(
-      `/api/servers/${id}/luckperms/groups/${encodeURIComponent(name)}`,
-      { method: "DELETE" },
-    ),
+    request<{ ok: true }>(`/api/servers/${id}/luckperms/groups/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }),
   lpGetGroup: (id: string, name: string) =>
-    request<LpGroupDetailDto>(
-      `/api/servers/${id}/luckperms/groups/${encodeURIComponent(name)}`,
-    ),
+    request<LpGroupDetailDto>(`/api/servers/${id}/luckperms/groups/${encodeURIComponent(name)}`),
   lpSetGroupPermission: (id: string, name: string, node: string, value: boolean) =>
     request<{ ok: true }>(
       `/api/servers/${id}/luckperms/groups/${encodeURIComponent(name)}/permission`,
@@ -427,19 +412,17 @@ export const api = {
       { method: "DELETE" },
     ),
   lpSetGroupMeta: (id: string, name: string, body: LpSetMetaRequest) =>
-    request<{ ok: true }>(
-      `/api/servers/${id}/luckperms/groups/${encodeURIComponent(name)}/meta`,
-      { method: "POST", body: JSON.stringify(body) },
-    ),
+    request<{ ok: true }>(`/api/servers/${id}/luckperms/groups/${encodeURIComponent(name)}/meta`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   lpGetUser: (id: string, name: string) =>
-    request<LpUserDto>(
-      `/api/servers/${id}/luckperms/users/${encodeURIComponent(name)}`,
-    ),
+    request<LpUserDto>(`/api/servers/${id}/luckperms/users/${encodeURIComponent(name)}`),
   lpAddUserGroup: (id: string, name: string, group: string) =>
-    request<{ ok: true }>(
-      `/api/servers/${id}/luckperms/users/${encodeURIComponent(name)}/groups`,
-      { method: "POST", body: JSON.stringify({ group }) },
-    ),
+    request<{ ok: true }>(`/api/servers/${id}/luckperms/users/${encodeURIComponent(name)}/groups`, {
+      method: "POST",
+      body: JSON.stringify({ group }),
+    }),
   lpRemoveUserGroup: (id: string, name: string, group: string) =>
     request<{ ok: true }>(
       `/api/servers/${id}/luckperms/users/${encodeURIComponent(name)}/groups/${encodeURIComponent(group)}`,
@@ -461,8 +444,7 @@ export const api = {
     request<MetricSampleDto[]>(`/api/servers/${id}/metrics/history?range=${range}`),
 
   // Benachrichtigungen
-  getNotificationSettings: () =>
-    request<NotificationSettingsDto>("/api/settings/notifications"),
+  getNotificationSettings: () => request<NotificationSettingsDto>("/api/settings/notifications"),
   updateNotificationSettings: (body: UpdateNotificationSettingsRequest) =>
     request<NotificationSettingsDto>("/api/settings/notifications", {
       method: "PUT",
@@ -476,8 +458,7 @@ export const api = {
 
   // Spieler-Profile
   listPlayers: () => request<PlayerListItemDto[]>("/api/players"),
-  getPlayer: (key: string) =>
-    request<PlayerProfileDto>(`/api/players/${encodeURIComponent(key)}`),
+  getPlayer: (key: string) => request<PlayerProfileDto>(`/api/players/${encodeURIComponent(key)}`),
   updatePlayerNotes: (key: string, notes: string) =>
     request<PlayerProfileDto>(`/api/players/${encodeURIComponent(key)}`, {
       method: "PATCH",
@@ -491,8 +472,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  revokeToken: (id: string) =>
-    request<{ ok: true }>(`/api/tokens/${id}`, { method: "DELETE" }),
+  revokeToken: (id: string) => request<{ ok: true }>(`/api/tokens/${id}`, { method: "DELETE" }),
 
   // Velocity-Netzwerke
   listNetworks: () => request<NetworkDto[]>("/api/networks"),
@@ -511,8 +491,7 @@ export const api = {
     request<{ ok: true }>(`/api/networks/${id}/subservers/${serverId}`, {
       method: "DELETE",
     }),
-  deleteNetwork: (id: string) =>
-    request<{ ok: true }>(`/api/networks/${id}`, { method: "DELETE" }),
+  deleteNetwork: (id: string) => request<{ ok: true }>(`/api/networks/${id}`, { method: "DELETE" }),
 
   listAudit: () => request<AuditEntryDto[]>("/api/audit"),
 
@@ -524,6 +503,5 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
-  deleteUser: (id: string) =>
-    request<{ ok: true }>(`/api/users/${id}`, { method: "DELETE" }),
+  deleteUser: (id: string) => request<{ ok: true }>(`/api/users/${id}`, { method: "DELETE" }),
 };

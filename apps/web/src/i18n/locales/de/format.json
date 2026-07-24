@@ -1,0 +1,9 @@
+{
+  "none": "–",
+  "never": "nie",
+  "justNow": "gerade eben",
+  "minutesAgo": "vor {{count}} min",
+  "hoursAgo": "vor {{count}} h",
+  "daysAgo": "vor {{count}} d",
+  "lessThanMinute": "< 1m"
+}

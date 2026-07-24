@@ -1,0 +1,13 @@
+{
+  "title": "Players",
+  "searchPlaceholder": "Search players…",
+  "loading": "Loading players…",
+  "loadError": "Players could not be loaded.",
+  "empty": {
+    "none": "No players recorded yet – they appear as soon as someone joins a server.",
+    "noMatch": "No player matches the search."
+  },
+  "online": "online",
+  "lastSeenRelative": "last seen {{time}}",
+  "playtime": "Playtime"
+}

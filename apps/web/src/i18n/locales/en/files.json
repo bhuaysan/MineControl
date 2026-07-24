@@ -1,0 +1,19 @@
+{
+  "newFolderPrompt": "Name of the new folder:",
+  "folder": "Folder",
+  "upload": "Upload",
+  "uploading": "Uploading…",
+  "uploadFailed": "Upload failed: {{message}}",
+  "notRunning": "The server must be running to browse files.",
+  "loadDirFailed": "Directory could not be loaded.",
+  "emptyDir": "Empty directory.",
+  "deleteConfirm": {
+    "title": "Delete",
+    "message": "Delete \"{{name}}\"?"
+  },
+  "editor": {
+    "loading": "Loading file…",
+    "loadFailed": "File could not be loaded.",
+    "saveFailed": "Saving failed."
+  }
+}

@@ -2,13 +2,8 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "../lib/api.js";
 import { openTopicSocket } from "../lib/ws.js";
 
@@ -35,13 +30,8 @@ const SEARCH_DECORATIONS = {
  * steht. Zusätzlich: Volltextsuche im Puffer und ein „nach unten"-Knopf, sobald
  * man hochgescrollt hat (dann pausiert das Auto-Scroll bewusst).
  */
-export function ConsoleView({
-  serverId,
-  canInput,
-}: {
-  serverId: string;
-  canInput: boolean;
-}) {
+export function ConsoleView({ serverId, canInput }: { serverId: string; canInput: boolean }) {
+  const { t } = useTranslation("console");
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
@@ -59,8 +49,7 @@ export function ConsoleView({
     if (!host) return;
 
     const term = new Terminal({
-      fontFamily:
-        'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+      fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
       fontSize: 12,
       convertEol: true,
       scrollback: 5000,
@@ -129,7 +118,7 @@ export function ConsoleView({
         for (const line of res.response.split("\n")) term.writeln(line);
       }
     } catch (err) {
-      term.writeln(`\x1b[31mFehler: ${(err as Error).message}\x1b[0m`);
+      term.writeln(`\x1b[31m${t("error", { message: (err as Error).message })}\x1b[0m`);
     } finally {
       setSending(false);
     }
@@ -176,7 +165,7 @@ export function ConsoleView({
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-neutral-800 bg-[#0a0a0a]">
       <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-3 py-1.5 text-xs text-neutral-500">
-        <span className="shrink-0">Konsole</span>
+        <span className="shrink-0">{t("title")}</span>
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <input
             value={search}
@@ -185,8 +174,8 @@ export function ConsoleView({
               if (!e.target.value) searchRef.current?.clearDecorations();
             }}
             onKeyDown={onSearchKeyDown}
-            placeholder="Suchen…"
-            aria-label="In der Konsole suchen"
+            placeholder={t("searchPlaceholder")}
+            aria-label={t("searchAriaLabel")}
             className="min-w-0 flex-1 rounded bg-neutral-900 px-2 py-1 text-xs text-neutral-200 outline-none placeholder:text-neutral-600 focus:ring-1 focus:ring-neutral-700"
           />
           <button
@@ -194,7 +183,7 @@ export function ConsoleView({
             onClick={findPrevious}
             disabled={!search}
             className="rounded px-1.5 py-1 hover:bg-neutral-800 disabled:opacity-40"
-            title="Vorheriger Treffer (Shift+Enter)"
+            title={t("prevMatch")}
           >
             ↑
           </button>
@@ -203,7 +192,7 @@ export function ConsoleView({
             onClick={findNext}
             disabled={!search}
             className="rounded px-1.5 py-1 hover:bg-neutral-800 disabled:opacity-40"
-            title="Nächster Treffer (Enter)"
+            title={t("nextMatch")}
           >
             ↓
           </button>
@@ -214,7 +203,7 @@ export function ConsoleView({
               connected ? "bg-status-online" : "bg-status-offline"
             }`}
           />
-          {connected ? "live" : "getrennt"}
+          {connected ? t("live") : t("disconnected")}
         </span>
       </div>
       <div className="relative">
@@ -224,9 +213,9 @@ export function ConsoleView({
             type="button"
             onClick={scrollToBottom}
             className="absolute bottom-3 right-4 rounded-full border border-neutral-700 bg-neutral-900/90 px-3 py-1 text-xs text-neutral-200 shadow-lg hover:bg-neutral-800"
-            title="Zum aktuellen Ende springen"
+            title={t("jumpToEnd")}
           >
-            ↓ Neueste
+            ↓ {t("newest")}
           </button>
         )}
       </div>
@@ -240,7 +229,7 @@ export function ConsoleView({
             value={command}
             onChange={(e) => setCommand(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Befehl (z. B. say Hallo)"
+            placeholder={t("commandPlaceholder")}
             className="min-w-0 flex-1 bg-transparent font-mono text-sm text-neutral-200 outline-none placeholder:text-neutral-600"
           />
           <button
@@ -248,7 +237,7 @@ export function ConsoleView({
             disabled={sending}
             className="rounded-md bg-status-online px-3 py-1 text-sm font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
           >
-            Senden
+            {t("send")}
           </button>
         </form>
       )}

@@ -1,0 +1,39 @@
+{
+  "loading": "Lade Profil…",
+  "notFound": "Spieler nicht gefunden.",
+  "online": "online",
+  "offline": "offline",
+  "header": {
+    "seen": "Zuletzt gesehen {{lastSeen}} · dabei seit {{firstSeen}}"
+  },
+  "stats": {
+    "totalPlaytime": "Gesamt-Spielzeit",
+    "sessions": "Sessions"
+  },
+  "notes": {
+    "title": "Notizen",
+    "placeholder": "Interne Notiz zu diesem Spieler…",
+    "saved": "Gespeichert.",
+    "empty": "Keine Notizen."
+  },
+  "sessions": {
+    "title": "Letzte Sessions",
+    "empty": "Noch keine Sessions erfasst.",
+    "running": "läuft"
+  },
+  "history": {
+    "title": "Moderations-Verlauf",
+    "empty": "Keine Einträge."
+  },
+  "actions": {
+    "player": {
+      "ban": "Gebannt",
+      "unban": "Entbannt",
+      "kick": "Gekickt",
+      "op": "OP erteilt",
+      "deop": "OP entzogen",
+      "whitelist_add": "Whitelist +",
+      "whitelist_remove": "Whitelist −"
+    }
+  }
+}

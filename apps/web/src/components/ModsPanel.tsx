@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../lib/api.js";
 import { confirmDialog } from "../lib/confirm.js";
@@ -12,17 +13,13 @@ function formatDownloads(n: number): string {
   return String(n);
 }
 
-export function ModsPanel({
-  serverId,
-  edition,
-}: {
-  serverId: string;
-  edition: string;
-}) {
+export function ModsPanel({ serverId, edition }: { serverId: string; edition: string }) {
+  const { t } = useTranslation(["mods", "common"]);
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const isPlugin = ["PAPER", "SPIGOT", "VELOCITY", "BUNGEECORD"].includes(edition);
   const noun = isPlugin ? "Plugins" : "Mods";
+  const examples = isPlugin ? t("examplesPlugin") : t("examplesMod");
 
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
@@ -106,12 +103,12 @@ export function ModsPanel({
     <div className="space-y-4">
       {/* Installiert */}
       <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-        <h2 className="mb-3 font-semibold">Installierte {noun}</h2>
+        <h2 className="mb-3 font-semibold">{t("installedTitle", { noun })}</h2>
         {anyError && (
           <p className="mb-2 text-sm text-status-error">{(anyError as Error).message}</p>
         )}
         {!installed || installed.length === 0 ? (
-          <p className="text-sm text-neutral-500">Noch nichts installiert.</p>
+          <p className="text-sm text-neutral-500">{t("nothingInstalled")}</p>
         ) : (
           <ul className="divide-y divide-neutral-800">
             {installed.map((m) => (
@@ -129,7 +126,7 @@ export function ModsPanel({
                   )}
                   {updatable.has(m.filename) && (
                     <span className="shrink-0 rounded bg-status-online/15 px-1.5 py-0.5 text-[10px] text-status-online">
-                      Update
+                      {t("updateBadge")}
                     </span>
                   )}
                 </span>
@@ -139,7 +136,7 @@ export function ModsPanel({
                     <button
                       onClick={() => setConfigFor(m.filename)}
                       className="text-neutral-300 hover:text-neutral-100"
-                      title="Konfiguration"
+                      title={t("configTitle")}
                     >
                       ⚙
                     </button>
@@ -149,7 +146,7 @@ export function ModsPanel({
                       onClick={() => updateMutation.mutate(m.filename)}
                       disabled={updateMutation.isPending}
                       className="text-status-online hover:opacity-80 disabled:opacity-50"
-                      title="Aktualisieren"
+                      title={t("updateTitle")}
                     >
                       ↑
                     </button>
@@ -161,7 +158,7 @@ export function ModsPanel({
                       }
                       disabled={toggleMutation.isPending}
                       className="hover:text-neutral-200 disabled:opacity-50"
-                      title={m.enabled ? "Deaktivieren" : "Aktivieren"}
+                      title={m.enabled ? t("disable") : t("enable")}
                     >
                       {m.enabled ? "⏸" : "▶"}
                     </button>
@@ -170,14 +167,14 @@ export function ModsPanel({
                     <button
                       onClick={() =>
                         void confirmDialog({
-                          title: "Löschen",
-                          message: `„${m.filename}" löschen?`,
-                          confirmLabel: "Löschen",
+                          title: t("deleteConfirm.title"),
+                          message: t("deleteConfirm.message", { name: m.filename }),
+                          confirmLabel: t("common:actions.delete"),
                           danger: true,
                         }).then((ok) => ok && deleteMutation.mutate(m.filename))
                       }
                       className="text-status-error hover:opacity-80"
-                      title="Löschen"
+                      title={t("deleteTitle")}
                     >
                       ✕
                     </button>
@@ -187,18 +184,16 @@ export function ModsPanel({
             ))}
           </ul>
         )}
-        <p className="mt-2 text-xs text-neutral-600">
-          Änderungen (Installieren/Aktivieren/Aktualisieren) wirken nach einem Neustart des Servers.
-        </p>
+        <p className="mt-2 text-xs text-neutral-600">{t("restartHint")}</p>
       </section>
 
       {/* Eigene .jar */}
       {can("ADMIN") && (
         <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-          <h2 className="mb-3 font-semibold">Eigene .jar hinzufügen</h2>
+          <h2 className="mb-3 font-semibold">{t("addJarTitle")}</h2>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <label className="inline-flex cursor-pointer items-center rounded-md border border-neutral-700 px-3 py-2 text-sm hover:border-status-online">
-              {uploadMutation.isPending ? "Lade hoch…" : "Datei wählen (.jar)"}
+              {uploadMutation.isPending ? t("uploading") : t("chooseFile")}
               <input
                 type="file"
                 accept=".jar"
@@ -207,7 +202,7 @@ export function ModsPanel({
                 disabled={uploadMutation.isPending}
               />
             </label>
-            <span className="text-xs text-neutral-600">oder</span>
+            <span className="text-xs text-neutral-600">{t("or")}</span>
             <form onSubmit={onUrl} className="flex min-w-0 flex-1 gap-2">
               <input
                 value={url}
@@ -220,43 +215,41 @@ export function ModsPanel({
                 disabled={urlMutation.isPending || !url.trim()}
                 className="shrink-0 rounded-md bg-status-online px-4 text-sm font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
               >
-                {urlMutation.isPending ? "Lade…" : "Von URL"}
+                {urlMutation.isPending ? t("urlLoading") : t("fromUrl")}
               </button>
             </form>
           </div>
-          <p className="mt-2 text-xs text-neutral-600">
-            Nur .jar-Dateien; URLs müssen öffentlich erreichbar sein (interne/lokale Adressen werden abgelehnt).
-          </p>
+          <p className="mt-2 text-xs text-neutral-600">{t("jarHint")}</p>
         </section>
       )}
 
       {/* Suche */}
       <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-        <h2 className="mb-3 font-semibold">{noun} suchen (Modrinth)</h2>
+        <h2 className="mb-3 font-semibold">{t("searchTitle", { noun })}</h2>
         <form onSubmit={onSearch} className="mb-3 flex gap-2">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={`z. B. ${isPlugin ? "EssentialsX, WorldEdit" : "Sodium, Lithium"}`}
+            placeholder={t("searchPlaceholder", { examples })}
             className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm outline-none focus:border-status-online"
           />
           <button
             type="submit"
             className="rounded-md bg-status-online px-4 text-sm font-medium text-neutral-950 hover:opacity-90"
           >
-            Suchen
+            {t("common:actions.search")}
           </button>
         </form>
 
         {installMutation.isError && (
           <p className="mb-2 text-sm text-status-error">
-            Installation fehlgeschlagen: {(installMutation.error as Error).message}
+            {t("installFailed", { message: (installMutation.error as Error).message })}
           </p>
         )}
 
-        {searchQuery.isFetching && <p className="text-sm text-neutral-500">Suche…</p>}
+        {searchQuery.isFetching && <p className="text-sm text-neutral-500">{t("searching")}</p>}
         {searchQuery.data && searchQuery.data.length === 0 && (
-          <p className="text-sm text-neutral-500">Keine kompatiblen Treffer.</p>
+          <p className="text-sm text-neutral-500">{t("noResults")}</p>
         )}
         {searchQuery.data && searchQuery.data.length > 0 && (
           <ul className="divide-y divide-neutral-800">
@@ -284,14 +277,13 @@ export function ModsPanel({
                   <button
                     onClick={() => installMutation.mutate(hit.projectId)}
                     disabled={
-                      installMutation.isPending &&
-                      installMutation.variables === hit.projectId
+                      installMutation.isPending && installMutation.variables === hit.projectId
                     }
                     className="shrink-0 rounded-md border border-status-online/40 px-3 py-1.5 text-sm text-status-online hover:bg-status-online/10 disabled:opacity-50"
                   >
                     {installMutation.isPending && installMutation.variables === hit.projectId
-                      ? "Installiere…"
-                      : "Installieren"}
+                      ? t("installing")
+                      : t("install")}
                   </button>
                 )}
               </li>
@@ -324,6 +316,7 @@ function PluginConfigEditor({
   canWrite: boolean;
   onClose: () => void;
 }) {
+  const { t } = useTranslation(["mods", "common"]);
   const [selected, setSelected] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
@@ -360,31 +353,30 @@ function PluginConfigEditor({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
-          <h3 className="truncate font-semibold">Konfiguration — {file}</h3>
+          <h3 className="truncate font-semibold">{t("configEditor.title", { file })}</h3>
           <button onClick={onClose} className="text-neutral-400 hover:text-neutral-100">
             ✕
           </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto p-4">
-          {listQuery.isLoading && <p className="text-sm text-neutral-500">Lade…</p>}
+          {listQuery.isLoading && (
+            <p className="text-sm text-neutral-500">{t("common:labels.loading")}</p>
+          )}
           {listQuery.isError && (
-            <p className="text-sm text-status-error">
-              {(listQuery.error as Error).message}
-            </p>
+            <p className="text-sm text-status-error">{(listQuery.error as Error).message}</p>
           )}
           {listQuery.data && listQuery.data.configDir == null && (
-            <p className="text-sm text-neutral-500">
-              Kein Config-Ordner gefunden (plugin.yml nicht lesbar oder Plugin noch nie gestartet).
-            </p>
+            <p className="text-sm text-neutral-500">{t("configEditor.noConfigDir")}</p>
           )}
           {listQuery.data && listQuery.data.configDir != null && (
             <>
               <p className="mb-2 text-xs text-neutral-600">
-                Ordner: <span className="font-mono">{listQuery.data.configDir}</span>
+                {t("configEditor.folder")}{" "}
+                <span className="font-mono">{listQuery.data.configDir}</span>
               </p>
               {listQuery.data.entries.length === 0 ? (
-                <p className="text-sm text-neutral-500">Noch keine Config-Dateien.</p>
+                <p className="text-sm text-neutral-500">{t("configEditor.noConfigFiles")}</p>
               ) : (
                 <div className="mb-3 flex flex-wrap gap-2">
                   {listQuery.data.entries
@@ -410,7 +402,9 @@ function PluginConfigEditor({
               )}
 
               {selected && fileQuery.isFetching && (
-                <p className="text-sm text-neutral-500">Lade {selected}…</p>
+                <p className="text-sm text-neutral-500">
+                  {t("configEditor.loadingFile", { name: selected })}
+                </p>
               )}
               {selected && fileQuery.data && (
                 <textarea
@@ -421,9 +415,7 @@ function PluginConfigEditor({
                 />
               )}
               {selected && fileQuery.isError && (
-                <p className="text-sm text-status-error">
-                  {(fileQuery.error as Error).message}
-                </p>
+                <p className="text-sm text-status-error">{(fileQuery.error as Error).message}</p>
               )}
             </>
           )}
@@ -437,15 +429,15 @@ function PluginConfigEditor({
               </span>
             )}
             {saveMutation.isSuccess && (
-              <span className="mr-auto text-sm text-status-online">Gespeichert.</span>
+              <span className="mr-auto text-sm text-status-online">{t("configEditor.saved")}</span>
             )}
             <button
               onClick={() => saveMutation.mutate()}
               disabled={!canWrite || saveMutation.isPending}
               className="rounded-md bg-status-online px-4 py-1.5 text-sm font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
-              title={canWrite ? undefined : "Nur Admins dürfen speichern"}
+              title={canWrite ? undefined : t("configEditor.onlyAdminsSave")}
             >
-              {saveMutation.isPending ? "Speichere…" : "Speichern"}
+              {saveMutation.isPending ? t("common:actions.saving") : t("common:actions.save")}
             </button>
           </div>
         )}

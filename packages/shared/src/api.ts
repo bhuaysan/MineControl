@@ -1,11 +1,5 @@
 import type { Role } from "./roles.js";
-import type {
-  Capability,
-  ServerEdition,
-  ServerState,
-  ServerStatus,
-  ServerType,
-} from "./server.js";
+import type { Capability, ServerEdition, ServerState, ServerStatus, ServerType } from "./server.js";
 
 /** Aktuell eingeloggter Benutzer (Antwort von GET /api/me). */
 export interface MeResponse {
@@ -139,8 +133,7 @@ export interface CreateDockerServerRequest {
 
 /** Quelle für einen Server-/Welt-Import beim Erstellen (siehe CreateDockerServerRequest). */
 export type ImportSource =
-  | { source: "upload"; stagingId: string }
-  | { source: "path"; filename: string };
+  { source: "upload"; stagingId: string } | { source: "path"; filename: string };
 
 /** Eine server-seitig verfügbare Import-Datei (aus IMPORT_DIR). */
 export interface ImportSourceDto {
@@ -312,6 +305,9 @@ export const MAX_EDITABLE_FILE_BYTES = 1_048_576;
 
 // ── Phase 3: Benachrichtigungen (Discord) ────────────────────────────────────
 
+/** Sprache, in der E-Mail-/Discord-Benachrichtigungen versendet werden. */
+export type NotificationLocale = "de" | "en";
+
 export interface NotificationSettingsDto {
   /** Webhook-URL wird nie zurückgegeben — nur, ob eine gesetzt ist. */
   discordConfigured: boolean;
@@ -326,6 +322,8 @@ export interface NotificationSettingsDto {
   notifyServerDown: boolean;
   notifyBackupFailed: boolean;
   notifyTaskFailed: boolean;
+  /** Sprache der versendeten Benachrichtigungen (E-Mail & Discord). */
+  notifyLocale: NotificationLocale;
 }
 
 export interface UpdateNotificationSettingsRequest {
@@ -343,6 +341,8 @@ export interface UpdateNotificationSettingsRequest {
   notifyServerDown?: boolean;
   notifyBackupFailed?: boolean;
   notifyTaskFailed?: boolean;
+  /** Sprache der versendeten Benachrichtigungen (E-Mail & Discord). */
+  notifyLocale?: NotificationLocale;
 }
 
 export type NotificationChannel = "discord" | "email";

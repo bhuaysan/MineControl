@@ -1,6 +1,7 @@
 import type { FileEntryDto } from "@minecontrol/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthContext.js";
 import { ApiRequestError, api } from "../lib/api.js";
 import { confirmDialog } from "../lib/confirm.js";
@@ -19,6 +20,7 @@ function parentPath(path: string): string {
 }
 
 export function FilesPanel({ serverId }: { serverId: string }) {
+  const { t } = useTranslation("files");
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const [path, setPath] = useState("/");
@@ -56,7 +58,7 @@ export function FilesPanel({ serverId }: { serverId: string }) {
   };
 
   const onNewFolder = () => {
-    const name = prompt("Name des neuen Ordners:");
+    const name = prompt(t("newFolderPrompt"));
     if (name?.trim()) mkdirMutation.mutate(joinPath(path, name.trim()));
   };
 
@@ -77,14 +79,14 @@ export function FilesPanel({ serverId }: { serverId: string }) {
               onClick={onNewFolder}
               className="rounded-md border border-neutral-700 px-2.5 py-1 text-xs hover:bg-neutral-800"
             >
-              + Ordner
+              + {t("folder")}
             </button>
             <button
               onClick={() => uploadRef.current?.click()}
               disabled={uploadMutation.isPending}
               className="rounded-md border border-neutral-700 px-2.5 py-1 text-xs hover:bg-neutral-800 disabled:opacity-50"
             >
-              {uploadMutation.isPending ? "Lade hoch…" : "↑ Upload"}
+              {uploadMutation.isPending ? t("uploading") : `↑ ${t("upload")}`}
             </button>
             <input ref={uploadRef} type="file" onChange={onUpload} className="hidden" />
           </div>
@@ -93,19 +95,17 @@ export function FilesPanel({ serverId }: { serverId: string }) {
 
       {uploadMutation.isError && (
         <p className="mb-2 text-sm text-status-error">
-          Upload fehlgeschlagen: {(uploadMutation.error as Error).message}
+          {t("uploadFailed", { message: (uploadMutation.error as Error).message })}
         </p>
       )}
 
       {notRunning ? (
-        <p className="py-6 text-center text-sm text-neutral-500">
-          Der Server muss laufen, um Dateien zu durchsuchen.
-        </p>
+        <p className="py-6 text-center text-sm text-neutral-500">{t("notRunning")}</p>
       ) : isLoading ? (
-        <p className="text-sm text-neutral-500">Lade…</p>
+        <p className="text-sm text-neutral-500">{t("common:labels.loading")}</p>
       ) : error ? (
         <p className="text-sm text-status-error">
-          {(error as Error).message || "Verzeichnis konnte nicht geladen werden."}
+          {(error as Error).message || t("loadDirFailed")}
         </p>
       ) : (
         <ul className="divide-y divide-neutral-800">
@@ -120,7 +120,7 @@ export function FilesPanel({ serverId }: { serverId: string }) {
             </li>
           )}
           {data?.entries.length === 0 && path === "/" && (
-            <li className="py-2 text-sm text-neutral-500">Leeres Verzeichnis.</li>
+            <li className="py-2 text-sm text-neutral-500">{t("emptyDir")}</li>
           )}
           {data?.entries.map((entry) => (
             <li key={entry.name} className="flex items-center justify-between gap-3 py-2 text-sm">
@@ -149,7 +149,7 @@ export function FilesPanel({ serverId }: { serverId: string }) {
                   <a
                     href={api.downloadFileUrl(serverId, joinPath(path, entry.name))}
                     className="text-neutral-400 hover:text-neutral-200"
-                    title="Herunterladen"
+                    title={t("common:actions.download")}
                   >
                     ↓
                   </a>
@@ -158,14 +158,14 @@ export function FilesPanel({ serverId }: { serverId: string }) {
                   <button
                     onClick={() =>
                       void confirmDialog({
-                        title: "Löschen",
-                        message: `„${entry.name}" löschen?`,
-                        confirmLabel: "Löschen",
+                        title: t("deleteConfirm.title"),
+                        message: t("deleteConfirm.message", { name: entry.name }),
+                        confirmLabel: t("common:actions.delete"),
                         danger: true,
                       }).then((ok) => ok && deleteMutation.mutate(joinPath(path, entry.name)))
                     }
                     className="text-status-error hover:opacity-80"
-                    title="Löschen"
+                    title={t("common:actions.delete")}
                   >
                     ✕
                   </button>
@@ -188,20 +188,11 @@ export function FilesPanel({ serverId }: { serverId: string }) {
   );
 }
 
-function Breadcrumb({
-  path,
-  onNavigate,
-}: {
-  path: string;
-  onNavigate: (p: string) => void;
-}) {
+function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (p: string) => void }) {
   const segments = path === "/" ? [] : path.slice(1).split("/");
   return (
     <div className="flex flex-wrap items-center gap-1 text-sm">
-      <button
-        onClick={() => onNavigate("/")}
-        className="text-neutral-400 hover:text-neutral-100"
-      >
+      <button onClick={() => onNavigate("/")} className="text-neutral-400 hover:text-neutral-100">
         /data
       </button>
       {segments.map((seg, i) => {
@@ -233,6 +224,7 @@ function FileEditor({
   canEdit: boolean;
   onClose: () => void;
 }) {
+  const { t } = useTranslation("files");
   const queryClient = useQueryClient();
   const [content, setContent] = useState<string | null>(null);
 
@@ -273,10 +265,10 @@ function FileEditor({
 
         <div className="min-h-0 flex-1 overflow-auto p-3">
           {isLoading ? (
-            <p className="text-sm text-neutral-500">Lade Datei…</p>
+            <p className="text-sm text-neutral-500">{t("editor.loading")}</p>
           ) : error ? (
             <p className="text-sm text-status-error">
-              {(error as Error).message || "Datei konnte nicht geladen werden."}
+              {(error as Error).message || t("editor.loadFailed")}
             </p>
           ) : (
             <textarea
@@ -296,16 +288,13 @@ function FileEditor({
               disabled={saveMutation.isPending}
               className="rounded-md bg-status-online px-4 py-1.5 text-sm font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
             >
-              {saveMutation.isPending ? "Speichern…" : "Speichern"}
+              {saveMutation.isPending ? t("common:actions.saving") : t("common:actions.save")}
             </button>
-            <button
-              onClick={onClose}
-              className="text-sm text-neutral-400 hover:text-neutral-200"
-            >
-              Abbrechen
+            <button onClick={onClose} className="text-sm text-neutral-400 hover:text-neutral-200">
+              {t("common:actions.cancel")}
             </button>
             {saveMutation.isError && (
-              <span className="text-sm text-status-error">Speichern fehlgeschlagen.</span>
+              <span className="text-sm text-status-error">{t("editor.saveFailed")}</span>
             )}
           </div>
         )}

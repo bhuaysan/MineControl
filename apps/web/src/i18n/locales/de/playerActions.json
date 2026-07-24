@@ -1,0 +1,16 @@
+{
+  "items": {
+    "kick": "Kicken",
+    "ban": "Bannen",
+    "unban": "Entbannen",
+    "whitelist_add": "Whitelist +",
+    "whitelist_remove": "Whitelist −",
+    "op": "OP geben",
+    "deop": "OP entziehen"
+  },
+  "menuLabel": "Aktionen für {{name}}",
+  "reasonLabel": "Grund",
+  "requiredHint": "(Pflicht)",
+  "optionalHint": "(optional)",
+  "reasonRequired": "Bitte einen Grund angeben."
+}

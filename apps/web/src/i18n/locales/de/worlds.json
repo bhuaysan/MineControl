@@ -1,0 +1,41 @@
+{
+  "actionFailed": "Aktion fehlgeschlagen",
+  "title": "Welten",
+  "loading": "Lade Welten…",
+  "needsRunning": "– der Server muss dafür laufen.",
+  "active": "aktiv",
+  "download": "Download",
+  "activate": "Aktivieren",
+  "switchConfirm": {
+    "title": "Welt wechseln",
+    "message": "Zur Welt „{{name}}\" wechseln? Der Server startet dazu neu.",
+    "confirmLabel": "Wechseln"
+  },
+  "deleteConfirm": {
+    "title": "Welt löschen",
+    "message": "Welt „{{name}}\" endgültig löschen?"
+  },
+  "create": {
+    "title": "Neue Welt erstellen",
+    "description": "Setzt die aktive Welt neu und startet den Server neu; die Welt wird beim Start generiert.",
+    "seedLabel": "Seed (optional)",
+    "submit": "Erstellen & aktivieren",
+    "submitting": "Erstelle…"
+  },
+  "upload": {
+    "title": "Welt hochladen (.tar.gz)",
+    "description": "Ein per „Download\" exportiertes Welt-Archiv unter neuem Namen importieren (max. 50 MB).",
+    "targetName": "Zielname",
+    "targetNamePlaceholder": "importierte-welt",
+    "submitting": "Lade hoch…"
+  },
+  "pregen": {
+    "title": "Pregeneration (Chunky)",
+    "description": "Generiert Chunks im Voraus für die aktive Welt. Chunky wird bei Bedarf automatisch installiert (dann Server-Neustart). Fortschritt erscheint in der Konsole.",
+    "descriptionWithWorld": "Generiert Chunks im Voraus für die aktive Welt („{{world}}\"). Chunky wird bei Bedarf automatisch installiert (dann Server-Neustart). Fortschritt erscheint in der Konsole.",
+    "radiusLabel": "Radius (Blöcke)",
+    "start": "Pregen starten",
+    "starting": "…",
+    "cancelResult": "Abgebrochen: {{response}}"
+  }
+}

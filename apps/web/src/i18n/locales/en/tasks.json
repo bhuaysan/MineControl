@@ -1,0 +1,35 @@
+{
+  "title": "Schedules",
+  "loading": "Loading schedules…",
+  "empty": "No scheduled tasks yet.",
+  "actionLabels": {
+    "RESTART": "Restart",
+    "COMMAND": "Command",
+    "BACKUP": "Backup"
+  },
+  "cronPresets": {
+    "0": "daily at 4:00",
+    "1": "every 6 h",
+    "2": "every 30 min"
+  },
+  "paused": "paused",
+  "lastRun": " · last run {{time}}",
+  "errorPrefix": "Error: {{message}}",
+  "runNow": "Now",
+  "pause": "Pause",
+  "resume": "Enable",
+  "deleteConfirm": {
+    "title": "Delete schedule",
+    "message": "Delete schedule \"{{name}}\"?"
+  },
+  "form": {
+    "title": "New schedule",
+    "namePlaceholder": "Name (e.g. Nightly restart)",
+    "cronPlaceholder": "Cron (min hour day month weekday)",
+    "commandPlaceholder": "Command (e.g. say Restart in 5 min)",
+    "retention": "Retention:",
+    "backupsSuffix": "Backups",
+    "submit": "Create schedule",
+    "submitting": "Creating…"
+  }
+}

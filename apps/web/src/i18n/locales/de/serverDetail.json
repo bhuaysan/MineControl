@@ -1,0 +1,60 @@
+{
+  "loading": "Lade Server…",
+  "notFound": "Server nicht gefunden.",
+  "type": {
+    "docker": "Docker",
+    "external": "Extern"
+  },
+  "delete": {
+    "button": "Entfernen",
+    "deleting": "Entferne…",
+    "confirmTitle": "Server entfernen",
+    "confirmMessage": "Server „{{name}}\" wirklich entfernen? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "confirmLabel": "Entfernen",
+    "keepWorldTitle": "Weltdaten behalten?",
+    "keepWorldMessage": "Sollen die Weltdaten (Docker-Volume) erhalten bleiben?",
+    "keepWorldConfirm": "Behalten",
+    "keepWorldCancel": "Endgültig löschen",
+    "success": "Server entfernt",
+    "error": "Entfernen fehlgeschlagen: {{message}}"
+  },
+  "provisionError": "Einrichtung fehlgeschlagen: {{error}}",
+  "command": {
+    "noResponse": "(keine Antwort)",
+    "error": "Fehler: {{message}}",
+    "heading": "Befehl senden (RCON)",
+    "send": "Senden"
+  },
+  "tabs": {
+    "overview": "Übersicht",
+    "console": "Konsole",
+    "players": "Spieler ({{n}})",
+    "files": "Dateien",
+    "mods": "Mods",
+    "plugins": "Plugins",
+    "worlds": "Welten",
+    "luckperms": "Rechte",
+    "backups": "Backups",
+    "tasks": "Zeitpläne",
+    "settings": "Einstellungen"
+  },
+  "details": {
+    "heading": "Details",
+    "version": "Version",
+    "players": "Spieler",
+    "latency": "Latenz",
+    "rcon": "RCON",
+    "rconConnected": "verbunden",
+    "rconNotConfigured": "nicht konfiguriert"
+  },
+  "metrics": {
+    "heading": "Metriken",
+    "offline": "Server offline – keine Metriken.",
+    "waiting": "Warte auf Daten…"
+  },
+  "history": "Verlauf",
+  "onlinePlayers": {
+    "heading": "Online ({{label}})",
+    "empty": "Niemand online."
+  }
+}

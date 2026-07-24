@@ -1,0 +1,56 @@
+{
+  "actionFailed": "Action failed",
+  "loadingStatus": "Loading LuckPerms status…",
+  "notSupported": "This server edition does not support LuckPerms.",
+  "notInstalled": {
+    "title": "LuckPerms not installed",
+    "description": "LuckPerms manages fine-grained in-game permissions (groups, prefixes, rights). It is installed via Modrinth; the server restarts afterwards.",
+    "install": "Install LuckPerms",
+    "installing": "Installing…",
+    "adminOnly": "Only admins can install."
+  },
+  "notResponding": "LuckPerms is installed but not responding yet — the server must be running and the plugin loaded.",
+  "tabs": {
+    "groups": "Groups",
+    "users": "Players"
+  },
+  "groups": {
+    "title": "Groups",
+    "loading": "Loading groups…",
+    "empty": "No groups.",
+    "weight": "weight {{weight}}",
+    "newLabel": "New group",
+    "newPlaceholder": "e.g. moderator",
+    "create": "Create",
+    "detailTitle": "Group “{{name}}”",
+    "delete": {
+      "title": "Delete group",
+      "message": "Delete group “{{name}}”?"
+    }
+  },
+  "meta": {
+    "weight": "Weight",
+    "prefix": "Prefix",
+    "suffix": "Suffix"
+  },
+  "permissions": {
+    "title": "Permissions",
+    "userTitle": "Direct permissions",
+    "empty": "No direct permissions.",
+    "remove": "Remove",
+    "node": "Node",
+    "nodePlaceholder": "e.g. essentials.fly",
+    "allow": "true (allow)",
+    "deny": "false (deny)",
+    "set": "Set"
+  },
+  "users": {
+    "playerLabel": "Player",
+    "playerPlaceholder": "Player name",
+    "hint": "The player must be known to LuckPerms (already connected or resolvable online).",
+    "loading": "Loading player…",
+    "primaryGroupLabel": "Primary group:",
+    "groupsTitle": "Groups",
+    "addGroupPlaceholder": "Add group"
+  }
+}

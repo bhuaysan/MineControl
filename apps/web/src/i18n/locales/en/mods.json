@@ -1,0 +1,40 @@
+{
+  "installedTitle": "Installed {{noun}}",
+  "nothingInstalled": "Nothing installed yet.",
+  "updateBadge": "Update",
+  "configTitle": "Configuration",
+  "updateTitle": "Update",
+  "enable": "Enable",
+  "disable": "Disable",
+  "deleteConfirm": {
+    "title": "Delete",
+    "message": "Delete \"{{name}}\"?"
+  },
+  "deleteTitle": "Delete",
+  "restartHint": "Changes (install/enable/update) take effect after a server restart.",
+  "addJarTitle": "Add your own .jar",
+  "uploading": "Uploading…",
+  "chooseFile": "Choose file (.jar)",
+  "or": "or",
+  "urlLoading": "Loading…",
+  "fromUrl": "From URL",
+  "jarHint": "Only .jar files; URLs must be publicly reachable (internal/local addresses are rejected).",
+  "searchTitle": "Search {{noun}} (Modrinth)",
+  "searchPlaceholder": "e.g. {{examples}}",
+  "examplesPlugin": "EssentialsX, WorldEdit",
+  "examplesMod": "Sodium, Lithium",
+  "installFailed": "Installation failed: {{message}}",
+  "searching": "Searching…",
+  "noResults": "No compatible results.",
+  "installing": "Installing…",
+  "install": "Install",
+  "configEditor": {
+    "title": "Configuration — {{file}}",
+    "noConfigDir": "No config folder found (plugin.yml not readable or plugin never started).",
+    "folder": "Folder:",
+    "noConfigFiles": "No config files yet.",
+    "loadingFile": "Loading {{name}}…",
+    "saved": "Saved.",
+    "onlyAdminsSave": "Only admins may save"
+  }
+}

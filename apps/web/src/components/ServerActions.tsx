@@ -1,18 +1,11 @@
 import type { LifecycleAction, ServerDto } from "@minecontrol/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { api } from "../lib/api.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { serversQueryKey } from "../hooks/useServers.js";
 import { confirmDialog } from "../lib/confirm.js";
 import { toast } from "../lib/toast.js";
-
-/** Nutzerlesbare Rückmeldung je Lifecycle-Aktion (Erfolgs-Toast). */
-const ACTION_LABEL: Record<LifecycleAction, string> = {
-  start: "Server wird gestartet",
-  stop: "Server wird gestoppt",
-  restart: "Server wird neu gestartet",
-  kill: "Server wird hart beendet",
-};
 
 /**
  * Start/Stop/Restart/Kill-Buttons. Zeigt nur die für den aktuellen Zustand &
@@ -20,6 +13,7 @@ const ACTION_LABEL: Record<LifecycleAction, string> = {
  * Server-Queries invalidiert; den echten Zustand liefert das WS-Status-Event.
  */
 export function ServerActions({ server }: { server: ServerDto }) {
+  const { t } = useTranslation("serverActions");
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const caps = server.capabilities;
@@ -32,14 +26,14 @@ export function ServerActions({ server }: { server: ServerDto }) {
 
   const mutation = useMutation({
     mutationFn: (action: LifecycleAction) => api.lifecycleAction(server.id, action),
-    onSuccess: (_data, action) => toast.success(ACTION_LABEL[action]),
+    onSuccess: (_data, action) => toast.success(t(`toast.${action}`)),
     onSettled: invalidate,
   });
 
   const autoRestartMutation = useMutation({
     mutationFn: (enabled: boolean) => api.setAutoRestart(server.id, enabled),
     onSuccess: (_data, enabled) =>
-      toast.success(enabled ? "Auto-Restart aktiviert" : "Auto-Restart deaktiviert"),
+      toast.success(enabled ? t("toast.autoRestartEnabled") : t("toast.autoRestartDisabled")),
     onSettled: invalidate,
   });
 
@@ -47,7 +41,7 @@ export function ServerActions({ server }: { server: ServerDto }) {
     action: LifecycleAction,
     confirmOpts?: { message: string; danger?: boolean },
   ) => {
-    if (confirmOpts && !(await confirmDialog({ ...confirmOpts, confirmLabel: "Fortfahren" }))) {
+    if (confirmOpts && !(await confirmDialog({ ...confirmOpts, confirmLabel: t("continue") }))) {
       return;
     }
     mutation.mutate(action);
@@ -59,8 +53,7 @@ export function ServerActions({ server }: { server: ServerDto }) {
   const running = state === "ONLINE" || state === "STARTING";
   const busy = mutation.isPending || state === "STARTING" || state === "STOPPING";
 
-  const base =
-    "rounded-md border px-3 py-1.5 text-sm transition-colors disabled:opacity-50";
+  const base = "rounded-md border px-3 py-1.5 text-sm transition-colors disabled:opacity-50";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -70,52 +63,52 @@ export function ServerActions({ server }: { server: ServerDto }) {
           disabled={busy}
           className={`${base} border-status-online/40 text-status-online hover:bg-status-online/10`}
         >
-          ▶ Start
+          ▶ {t("start")}
         </button>
       )}
       {canStop && running && (
         <button
           onClick={() =>
             void run("stop", {
-              message: `Server „${server.name}" wirklich stoppen? Aktive Spieler werden getrennt.`,
+              message: t("confirmStop", { name: server.name }),
             })
           }
           disabled={busy}
           className={`${base} border-neutral-700 text-neutral-200 hover:bg-neutral-800`}
         >
-          ⏻ Stop
+          ⏻ {t("stop")}
         </button>
       )}
       {isDocker && running && (
         <button
           onClick={() =>
-            void run("restart", { message: `Server „${server.name}" neu starten?` })
+            void run("restart", { message: t("confirmRestart", { name: server.name }) })
           }
           disabled={busy}
           className={`${base} border-neutral-700 text-neutral-200 hover:bg-neutral-800`}
         >
-          ⟳ Neustart
+          ⟳ {t("restart")}
         </button>
       )}
       {isDocker && running && (
         <button
           onClick={() =>
             void run("kill", {
-              message: `Server „${server.name}" hart killen? Der Container wird sofort beendet — Datenverlust möglich.`,
+              message: t("confirmKill", { name: server.name }),
               danger: true,
             })
           }
           disabled={busy}
           className={`${base} border-status-error/40 text-status-error hover:bg-status-error/10`}
         >
-          ✕ Kill
+          ✕ {t("kill")}
         </button>
       )}
       {busy && <span className="text-xs text-neutral-500">…</span>}
       {isDocker && can("ADMIN") && (
         <label
           className="ml-auto flex cursor-pointer items-center gap-2 text-sm text-neutral-300"
-          title="Startet den Container automatisch neu, wenn Minecraft zu lange nicht erreichbar ist (Hänger/Crashloop)."
+          title={t("autoRestartTitle")}
         >
           <input
             type="checkbox"
@@ -124,7 +117,7 @@ export function ServerActions({ server }: { server: ServerDto }) {
             onChange={(e) => autoRestartMutation.mutate(e.target.checked)}
             className="h-4 w-4 rounded border-neutral-600 bg-neutral-800"
           />
-          Auto-Restart
+          {t("autoRestart")}
         </label>
       )}
     </div>

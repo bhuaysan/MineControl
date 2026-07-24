@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
 import { EmptyState, ErrorState, LoadingState } from "../components/QueryStates.js";
@@ -6,31 +7,31 @@ import { useDashboardSocket } from "../hooks/useDashboardSocket.js";
 import { useServers } from "../hooks/useServers.js";
 
 export function DashboardPage() {
+  const { t } = useTranslation("dashboard");
   const { can } = useAuth();
   const { data: servers, isLoading, error, refetch } = useServers();
   const wsState = useDashboardSocket();
 
   const online = servers?.filter((s) => s.status.online).length ?? 0;
-  const totalPlayers =
-    servers?.reduce((sum, s) => sum + s.status.players.online, 0) ?? 0;
+  const totalPlayers = servers?.reduce((sum, s) => sum + s.status.players.online, 0) ?? 0;
 
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <h1 className="text-2xl font-bold">{t("title")}</h1>
         {can("ADMIN") && (
           <Link
             to="/servers/new"
             className="rounded-md bg-status-online px-3 py-2 text-sm font-medium text-neutral-950 hover:opacity-90"
           >
-            + Server hinzufügen
+            {t("addServer")}
           </Link>
         )}
       </div>
 
       {wsState === "closed" && (
         <div className="mb-4 rounded-md border border-status-pending/40 bg-status-pending/10 px-4 py-2 text-sm text-status-pending">
-          Live-Verbindung getrennt – versuche erneut…
+          {t("liveDisconnected")}
         </div>
       )}
 
@@ -39,25 +40,21 @@ export function DashboardPage() {
           <span className="font-semibold text-neutral-100">
             {online}/{servers.length}
           </span>{" "}
-          Server online · <span className="font-semibold">{totalPlayers}</span> Spieler
+          {t("serversOnline")} · <span className="font-semibold">{totalPlayers}</span>{" "}
+          {t("players")}
         </div>
       )}
 
-      {isLoading && <LoadingState label="Lade Server…" />}
-      {error && (
-        <ErrorState
-          message="Server konnten nicht geladen werden."
-          onRetry={() => void refetch()}
-        />
-      )}
+      {isLoading && <LoadingState label={t("loadingServers")} />}
+      {error && <ErrorState message={t("loadError")} onRetry={() => void refetch()} />}
 
       {servers && servers.length === 0 && (
         <EmptyState
-          title="Noch keine Server eingerichtet."
+          title={t("empty.title")}
           action={
             can("ADMIN") ? (
               <Link to="/servers/new" className="text-status-online hover:underline">
-                Ersten Server hinzufügen
+                {t("empty.action")}
               </Link>
             ) : undefined
           }
@@ -65,7 +62,9 @@ export function DashboardPage() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {servers?.map((s) => <ServerCard key={s.id} server={s} />)}
+        {servers?.map((s) => (
+          <ServerCard key={s.id} server={s} />
+        ))}
       </div>
     </div>
   );

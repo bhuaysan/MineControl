@@ -1,0 +1,14 @@
+{
+  "error": "Fehler: {{message}}",
+  "title": "Konsole",
+  "searchPlaceholder": "Suchen…",
+  "searchAriaLabel": "In der Konsole suchen",
+  "prevMatch": "Vorheriger Treffer (Shift+Enter)",
+  "nextMatch": "Nächster Treffer (Enter)",
+  "live": "live",
+  "disconnected": "getrennt",
+  "jumpToEnd": "Zum aktuellen Ende springen",
+  "newest": "Neueste",
+  "commandPlaceholder": "Befehl (z. B. say Hallo)",
+  "send": "Senden"
+}

@@ -1,9 +1,11 @@
 import type { AuditEntryDto } from "@minecontrol/shared";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { api } from "../lib/api.js";
 import { formatRelative } from "../lib/format.js";
 
 export function AuditPage() {
+  const { t } = useTranslation("audit");
   const { data, isLoading } = useQuery<AuditEntryDto[]>({
     queryKey: ["audit"],
     queryFn: api.listAudit,
@@ -11,16 +13,16 @@ export function AuditPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="mb-6 text-2xl font-bold">Audit-Log</h1>
-      {isLoading && <p className="text-neutral-500">Lade…</p>}
+      <h1 className="mb-6 text-2xl font-bold">{t("title")}</h1>
+      {isLoading && <p className="text-neutral-500">{t("common:labels.loading")}</p>}
       <div className="overflow-hidden rounded-lg border border-neutral-800">
         <table className="w-full text-left text-sm">
           <thead className="bg-neutral-900 text-neutral-400">
             <tr>
-              <th className="px-4 py-2 font-medium">Zeit</th>
-              <th className="px-4 py-2 font-medium">Benutzer</th>
-              <th className="px-4 py-2 font-medium">Aktion</th>
-              <th className="px-4 py-2 font-medium">Details</th>
+              <th className="px-4 py-2 font-medium">{t("table.time")}</th>
+              <th className="px-4 py-2 font-medium">{t("table.user")}</th>
+              <th className="px-4 py-2 font-medium">{t("table.action")}</th>
+              <th className="px-4 py-2 font-medium">{t("table.details")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-800">

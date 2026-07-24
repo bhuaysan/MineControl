@@ -1,0 +1,7 @@
+{
+  "type": {
+    "docker": "Docker",
+    "external": "Extern"
+  },
+  "playersOnline": "Spieler online"
+}

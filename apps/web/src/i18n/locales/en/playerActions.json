@@ -1,0 +1,16 @@
+{
+  "items": {
+    "kick": "Kick",
+    "ban": "Ban",
+    "unban": "Unban",
+    "whitelist_add": "Whitelist +",
+    "whitelist_remove": "Whitelist −",
+    "op": "Grant operator",
+    "deop": "Remove operator"
+  },
+  "menuLabel": "Actions for {{name}}",
+  "reasonLabel": "Reason",
+  "requiredHint": "(required)",
+  "optionalHint": "(optional)",
+  "reasonRequired": "Please provide a reason."
+}

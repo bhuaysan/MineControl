@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
 import { ApiRequestError } from "../lib/api.js";
 
 export function LoginPage() {
+  const { t } = useTranslation("auth");
   const { login } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
@@ -24,12 +26,10 @@ export function LoginPage() {
       if (err instanceof ApiRequestError && err.code === "2fa_required") {
         setNeedCode(true); // Passwort ok → jetzt Code abfragen.
       } else if (err instanceof ApiRequestError && err.code === "2fa_invalid") {
-        setError("Bestätigungscode ungültig");
+        setError(t("invalidCode"));
       } else {
         setNeedCode(false);
-        setError(
-          err instanceof ApiRequestError ? err.message : "Anmeldung fehlgeschlagen",
-        );
+        setError(err instanceof ApiRequestError ? err.message : t("loginFailed"));
       }
     } finally {
       setBusy(false);
@@ -48,7 +48,7 @@ export function LoginPage() {
         </div>
 
         <label className="mb-1 block text-sm text-neutral-400" htmlFor="username">
-          Benutzername
+          {t("username")}
         </label>
         <input
           id="username"
@@ -60,7 +60,7 @@ export function LoginPage() {
         />
 
         <label className="mb-1 block text-sm text-neutral-400" htmlFor="password">
-          Passwort
+          {t("password")}
         </label>
         <input
           id="password"
@@ -74,7 +74,7 @@ export function LoginPage() {
         {needCode && (
           <>
             <label className="mb-1 block text-sm text-neutral-400" htmlFor="code">
-              Bestätigungscode (2FA)
+              {t("code")}
             </label>
             <input
               id="code"
@@ -97,7 +97,7 @@ export function LoginPage() {
           disabled={busy}
           className="w-full rounded-md bg-status-online py-2 font-medium text-neutral-950 transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {busy ? "Anmelden…" : needCode ? "Bestätigen" : "Anmelden"}
+          {busy ? t("signingIn") : needCode ? t("verify") : t("signIn")}
         </button>
       </form>
     </div>

@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import type { ConfirmRequest } from "../lib/confirm.js";
 import { resolveConfirm, subscribeConfirm } from "../lib/confirm.js";
@@ -20,6 +21,7 @@ function getSnapshot(): ConfirmRequest | null {
  * bestätigt, Escape/Backdrop bricht ab.
  */
 export function ConfirmDialog(): React.ReactElement | null {
+  const { t } = useTranslation("dialog");
   const request = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   useEffect(() => {
@@ -35,10 +37,10 @@ export function ConfirmDialog(): React.ReactElement | null {
   if (!request || typeof document === "undefined") return null;
 
   const {
-    title = "Bist du sicher?",
+    title = t("defaultTitle"),
     message,
-    confirmLabel = "Bestätigen",
-    cancelLabel = "Abbrechen",
+    confirmLabel = t("common:actions.confirm"),
+    cancelLabel = t("common:actions.cancel"),
     danger = false,
   } = request;
 

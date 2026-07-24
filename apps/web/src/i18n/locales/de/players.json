@@ -1,0 +1,13 @@
+{
+  "title": "Spieler",
+  "searchPlaceholder": "Spieler suchen…",
+  "loading": "Lade Spieler…",
+  "loadError": "Spieler konnten nicht geladen werden.",
+  "empty": {
+    "none": "Noch keine Spieler erfasst – sie erscheinen, sobald jemand einen Server betritt.",
+    "noMatch": "Kein Spieler passt zur Suche."
+  },
+  "online": "online",
+  "lastSeenRelative": "zuletzt {{time}}",
+  "playtime": "Spielzeit"
+}

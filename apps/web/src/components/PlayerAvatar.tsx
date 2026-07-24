@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   name: string;
@@ -11,6 +12,7 @@ interface Props {
  * oder UUID; bei Ladefehler Fallback auf die Initiale.
  */
 export function PlayerAvatar({ name, uuid, size = 24 }: Props) {
+  const { t } = useTranslation("playerAvatar");
   const [failed, setFailed] = useState(false);
   const src = `https://mc-heads.net/avatar/${encodeURIComponent(uuid ?? name)}/${size}`;
 
@@ -29,7 +31,7 @@ export function PlayerAvatar({ name, uuid, size = 24 }: Props) {
   return (
     <img
       src={src}
-      alt={`Kopf von ${name}`}
+      alt={t("alt", { name })}
       width={size}
       height={size}
       loading="lazy"

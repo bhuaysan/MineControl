@@ -1,0 +1,20 @@
+{
+  "start": "Start",
+  "stop": "Stop",
+  "restart": "Neustart",
+  "kill": "Kill",
+  "continue": "Fortfahren",
+  "confirmStop": "Server „{{name}}\" wirklich stoppen? Aktive Spieler werden getrennt.",
+  "confirmRestart": "Server „{{name}}\" neu starten?",
+  "confirmKill": "Server „{{name}}\" hart killen? Der Container wird sofort beendet — Datenverlust möglich.",
+  "autoRestart": "Auto-Restart",
+  "autoRestartTitle": "Startet den Container automatisch neu, wenn Minecraft zu lange nicht erreichbar ist (Hänger/Crashloop).",
+  "toast": {
+    "start": "Server wird gestartet",
+    "stop": "Server wird gestoppt",
+    "restart": "Server wird neu gestartet",
+    "kill": "Server wird hart beendet",
+    "autoRestartEnabled": "Auto-Restart aktiviert",
+    "autoRestartDisabled": "Auto-Restart deaktiviert"
+  }
+}

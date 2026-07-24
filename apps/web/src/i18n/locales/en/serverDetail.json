@@ -1,0 +1,60 @@
+{
+  "loading": "Loading server…",
+  "notFound": "Server not found.",
+  "type": {
+    "docker": "Docker",
+    "external": "External"
+  },
+  "delete": {
+    "button": "Remove",
+    "deleting": "Removing…",
+    "confirmTitle": "Remove server",
+    "confirmMessage": "Really remove server “{{name}}”? This action cannot be undone.",
+    "confirmLabel": "Remove",
+    "keepWorldTitle": "Keep world data?",
+    "keepWorldMessage": "Should the world data (Docker volume) be preserved?",
+    "keepWorldConfirm": "Keep",
+    "keepWorldCancel": "Delete permanently",
+    "success": "Server removed",
+    "error": "Removal failed: {{message}}"
+  },
+  "provisionError": "Setup failed: {{error}}",
+  "command": {
+    "noResponse": "(no response)",
+    "error": "Error: {{message}}",
+    "heading": "Send command (RCON)",
+    "send": "Send"
+  },
+  "tabs": {
+    "overview": "Overview",
+    "console": "Console",
+    "players": "Players ({{n}})",
+    "files": "Files",
+    "mods": "Mods",
+    "plugins": "Plugins",
+    "worlds": "Worlds",
+    "luckperms": "Permissions",
+    "backups": "Backups",
+    "tasks": "Schedules",
+    "settings": "Settings"
+  },
+  "details": {
+    "heading": "Details",
+    "version": "Version",
+    "players": "Players",
+    "latency": "Latency",
+    "rcon": "RCON",
+    "rconConnected": "connected",
+    "rconNotConfigured": "not configured"
+  },
+  "metrics": {
+    "heading": "Metrics",
+    "offline": "Server offline – no metrics.",
+    "waiting": "Waiting for data…"
+  },
+  "history": "History",
+  "onlinePlayers": {
+    "heading": "Online ({{label}})",
+    "empty": "Nobody online."
+  }
+}

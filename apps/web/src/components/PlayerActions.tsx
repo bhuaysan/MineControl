@@ -1,6 +1,7 @@
 import type { PlayerAction } from "@minecontrol/shared";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "../lib/api.js";
 
 interface Props {
@@ -12,23 +13,23 @@ interface Props {
 
 interface MenuItem {
   action: PlayerAction;
-  label: string;
   /** Öffnet vorher einen Grund-Dialog. */
   needsReason?: "required" | "optional";
   destructive?: boolean;
 }
 
 const ITEMS: MenuItem[] = [
-  { action: "kick", label: "Kicken", needsReason: "optional", destructive: true },
-  { action: "ban", label: "Bannen", needsReason: "required", destructive: true },
-  { action: "unban", label: "Entbannen" },
-  { action: "whitelist_add", label: "Whitelist +" },
-  { action: "whitelist_remove", label: "Whitelist −" },
-  { action: "op", label: "OP geben" },
-  { action: "deop", label: "OP entziehen" },
+  { action: "kick", needsReason: "optional", destructive: true },
+  { action: "ban", needsReason: "required", destructive: true },
+  { action: "unban" },
+  { action: "whitelist_add" },
+  { action: "whitelist_remove" },
+  { action: "op" },
+  { action: "deop" },
 ];
 
 export function PlayerActionMenu({ serverId, playerName, onDone }: Props) {
+  const { t } = useTranslation("playerActions");
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<MenuItem | null>(null);
   const [reason, setReason] = useState("");
@@ -64,7 +65,7 @@ export function PlayerActionMenu({ serverId, playerName, onDone }: Props) {
   const confirmDialog = () => {
     if (!dialog) return;
     if (dialog.needsReason === "required" && !reason.trim()) {
-      setError("Bitte einen Grund angeben.");
+      setError(t("reasonRequired"));
       return;
     }
     mutation.mutate({ action: dialog.action, reason: reason.trim() });
@@ -76,7 +77,7 @@ export function PlayerActionMenu({ serverId, playerName, onDone }: Props) {
         <button
           onClick={() => setOpen((v) => !v)}
           className="rounded px-2 py-0.5 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
-          aria-label={`Aktionen für ${playerName}`}
+          aria-label={t("menuLabel", { name: playerName })}
         >
           ⋮
         </button>
@@ -96,7 +97,7 @@ export function PlayerActionMenu({ serverId, playerName, onDone }: Props) {
                     item.destructive ? "text-status-error" : "text-neutral-200"
                   }`}
                 >
-                  {item.label}
+                  {t(`items.${item.action}`)}
                 </button>
               ))}
             </div>
@@ -108,10 +109,11 @@ export function PlayerActionMenu({ serverId, playerName, onDone }: Props) {
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-sm rounded-lg border border-neutral-700 bg-neutral-900 p-5">
             <h3 className="mb-3 font-semibold">
-              {dialog.label}: <span className="text-neutral-300">{playerName}</span>
+              {t(`items.${dialog.action}`)}: <span className="text-neutral-300">{playerName}</span>
             </h3>
             <label className="mb-1 block text-sm text-neutral-400">
-              Grund {dialog.needsReason === "required" ? "(Pflicht)" : "(optional)"}
+              {t("reasonLabel")}{" "}
+              {dialog.needsReason === "required" ? t("requiredHint") : t("optionalHint")}
             </label>
             <textarea
               value={reason}
@@ -129,14 +131,14 @@ export function PlayerActionMenu({ serverId, playerName, onDone }: Props) {
                 }}
                 className="rounded-md px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200"
               >
-                Abbrechen
+                {t("common:actions.cancel")}
               </button>
               <button
                 onClick={confirmDialog}
                 disabled={mutation.isPending}
                 className="rounded-md bg-status-error px-3 py-1.5 text-sm font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
               >
-                {mutation.isPending ? "…" : dialog.label}
+                {mutation.isPending ? "…" : t(`items.${dialog.action}`)}
               </button>
             </div>
           </div>

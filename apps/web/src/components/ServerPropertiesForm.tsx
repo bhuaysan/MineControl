@@ -1,32 +1,32 @@
 import { DIFFICULTIES, GAMEMODES } from "@minecontrol/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "../lib/api.js";
 
 type FieldKind = "text" | "number" | "bool" | "difficulty" | "gamemode";
 
 interface Field {
   key: string;
-  label: string;
   kind: FieldKind;
 }
 
 /** Kuratierte, editierbare server.properties-Felder mit Eingabetyp. */
 const FIELDS: Field[] = [
-  { key: "motd", label: "MOTD", kind: "text" },
-  { key: "difficulty", label: "Schwierigkeit", kind: "difficulty" },
-  { key: "gamemode", label: "Spielmodus", kind: "gamemode" },
-  { key: "max-players", label: "Max. Spieler", kind: "number" },
-  { key: "view-distance", label: "Sichtweite", kind: "number" },
-  { key: "simulation-distance", label: "Simulationsdistanz", kind: "number" },
-  { key: "spawn-protection", label: "Spawn-Schutz", kind: "number" },
-  { key: "pvp", label: "PvP", kind: "bool" },
-  { key: "online-mode", label: "Online-Modus", kind: "bool" },
-  { key: "allow-nether", label: "Nether erlauben", kind: "bool" },
-  { key: "allow-flight", label: "Fliegen erlauben", kind: "bool" },
-  { key: "hardcore", label: "Hardcore", kind: "bool" },
-  { key: "white-list", label: "Whitelist aktiv", kind: "bool" },
-  { key: "enforce-whitelist", label: "Whitelist erzwingen", kind: "bool" },
+  { key: "motd", kind: "text" },
+  { key: "difficulty", kind: "difficulty" },
+  { key: "gamemode", kind: "gamemode" },
+  { key: "max-players", kind: "number" },
+  { key: "view-distance", kind: "number" },
+  { key: "simulation-distance", kind: "number" },
+  { key: "spawn-protection", kind: "number" },
+  { key: "pvp", kind: "bool" },
+  { key: "online-mode", kind: "bool" },
+  { key: "allow-nether", kind: "bool" },
+  { key: "allow-flight", kind: "bool" },
+  { key: "hardcore", kind: "bool" },
+  { key: "white-list", kind: "bool" },
+  { key: "enforce-whitelist", kind: "bool" },
 ];
 
 const inputClass =
@@ -44,6 +44,7 @@ export function ServerPropertiesForm({
   serverId: string;
   canEdit: boolean;
 }) {
+  const { t } = useTranslation("serverProperties");
   const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["server", serverId, "properties"],
@@ -56,8 +57,7 @@ export function ServerPropertiesForm({
   }, [data]);
 
   const mutation = useMutation({
-    mutationFn: (changed: Record<string, string>) =>
-      api.updateProperties(serverId, changed),
+    mutationFn: (changed: Record<string, string>) => api.updateProperties(serverId, changed),
     onSuccess: (fresh) => {
       setValues(fresh);
       void queryClient.invalidateQueries({
@@ -66,8 +66,7 @@ export function ServerPropertiesForm({
     },
   });
 
-  const set = (key: string, value: string) =>
-    setValues((prev) => ({ ...prev, [key]: value }));
+  const set = (key: string, value: string) => setValues((prev) => ({ ...prev, [key]: value }));
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -80,32 +79,22 @@ export function ServerPropertiesForm({
     if (Object.keys(changed).length > 0) mutation.mutate(changed);
   };
 
-  if (isLoading) return <p className="text-sm text-neutral-500">Lade Einstellungen…</p>;
+  if (isLoading) return <p className="text-sm text-neutral-500">{t("loading")}</p>;
   if (error) {
-    return (
-      <p className="text-sm text-status-error">
-        server.properties konnte nicht gelesen werden. Der Server muss dafür
-        mindestens einmal erstellt worden sein.
-      </p>
-    );
+    return <p className="text-sm text-status-error">{t("readError")}</p>;
   }
 
   const empty = data && Object.keys(data).length === 0;
 
   return (
     <form onSubmit={onSubmit}>
-      {empty && (
-        <p className="mb-3 text-sm text-neutral-500">
-          Noch keine server.properties vorhanden – der Server generiert sie beim
-          ersten Start.
-        </p>
-      )}
+      {empty && <p className="mb-3 text-sm text-neutral-500">{t("empty")}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         {FIELDS.map((field) => {
           const value = values[field.key] ?? "";
           return (
             <label key={field.key} className="block text-sm">
-              <span className="mb-1 block text-neutral-400">{field.label}</span>
+              <span className="mb-1 block text-neutral-400">{t(`fields.${field.key}`)}</span>
               {field.kind === "bool" ? (
                 <select
                   value={value || "false"}
@@ -113,8 +102,8 @@ export function ServerPropertiesForm({
                   onChange={(e) => set(field.key, e.target.value)}
                   className={inputClass}
                 >
-                  <option value="true">an</option>
-                  <option value="false">aus</option>
+                  <option value="true">{t("on")}</option>
+                  <option value="false">{t("off")}</option>
                 </select>
               ) : field.kind === "difficulty" ? (
                 <select
@@ -163,17 +152,13 @@ export function ServerPropertiesForm({
             disabled={mutation.isPending}
             className="rounded-md bg-status-online px-4 py-2 text-sm font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
           >
-            {mutation.isPending ? "Speichern…" : "Speichern"}
+            {mutation.isPending ? t("common:actions.saving") : t("common:actions.save")}
           </button>
-          <span className="text-xs text-neutral-500">
-            Wirkt nach dem nächsten Neustart des Servers.
-          </span>
+          <span className="text-xs text-neutral-500">{t("hint")}</span>
           {mutation.isError && (
-            <span className="text-xs text-status-error">Speichern fehlgeschlagen.</span>
+            <span className="text-xs text-status-error">{t("common:errors.saveFailed")}</span>
           )}
-          {mutation.isSuccess && (
-            <span className="text-xs text-status-online">Gespeichert.</span>
-          )}
+          {mutation.isSuccess && <span className="text-xs text-status-online">{t("saved")}</span>}
         </div>
       )}
     </form>

@@ -1,0 +1,40 @@
+{
+  "installedTitle": "Installierte {{noun}}",
+  "nothingInstalled": "Noch nichts installiert.",
+  "updateBadge": "Update",
+  "configTitle": "Konfiguration",
+  "updateTitle": "Aktualisieren",
+  "enable": "Aktivieren",
+  "disable": "Deaktivieren",
+  "deleteConfirm": {
+    "title": "Löschen",
+    "message": "„{{name}}\" löschen?"
+  },
+  "deleteTitle": "Löschen",
+  "restartHint": "Änderungen (Installieren/Aktivieren/Aktualisieren) wirken nach einem Neustart des Servers.",
+  "addJarTitle": "Eigene .jar hinzufügen",
+  "uploading": "Lade hoch…",
+  "chooseFile": "Datei wählen (.jar)",
+  "or": "oder",
+  "urlLoading": "Lade…",
+  "fromUrl": "Von URL",
+  "jarHint": "Nur .jar-Dateien; URLs müssen öffentlich erreichbar sein (interne/lokale Adressen werden abgelehnt).",
+  "searchTitle": "{{noun}} suchen (Modrinth)",
+  "searchPlaceholder": "z. B. {{examples}}",
+  "examplesPlugin": "EssentialsX, WorldEdit",
+  "examplesMod": "Sodium, Lithium",
+  "installFailed": "Installation fehlgeschlagen: {{message}}",
+  "searching": "Suche…",
+  "noResults": "Keine kompatiblen Treffer.",
+  "installing": "Installiere…",
+  "install": "Installieren",
+  "configEditor": {
+    "title": "Konfiguration — {{file}}",
+    "noConfigDir": "Kein Config-Ordner gefunden (plugin.yml nicht lesbar oder Plugin noch nie gestartet).",
+    "folder": "Ordner:",
+    "noConfigFiles": "Noch keine Config-Dateien.",
+    "loadingFile": "Lade {{name}}…",
+    "saved": "Gespeichert.",
+    "onlyAdminsSave": "Nur Admins dürfen speichern"
+  }
+}

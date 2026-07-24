@@ -2,6 +2,7 @@ import type { Role, UserDto } from "@minecontrol/shared";
 import { ROLES } from "@minecontrol/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../lib/api.js";
 import { confirmDialog } from "../lib/confirm.js";
@@ -9,13 +10,8 @@ import { formatRelative } from "../lib/format.js";
 
 const usersKey = ["users"] as const;
 
-const ROLE_LABEL: Record<Role, string> = {
-  VIEWER: "Viewer",
-  MODERATOR: "Moderator",
-  ADMIN: "Admin",
-};
-
 export function UsersPage() {
+  const { t } = useTranslation("users");
   const { user: me } = useAuth();
   const queryClient = useQueryClient();
   const { data: users, isLoading } = useQuery<UserDto[]>({
@@ -23,8 +19,7 @@ export function UsersPage() {
     queryFn: api.listUsers,
   });
 
-  const invalidate = () =>
-    void queryClient.invalidateQueries({ queryKey: usersKey });
+  const invalidate = () => void queryClient.invalidateQueries({ queryKey: usersKey });
 
   const [error, setError] = useState<string | null>(null);
   const handleError = (err: unknown) => setError((err as Error).message);
@@ -34,8 +29,7 @@ export function UsersPage() {
   const [newRole, setNewRole] = useState<Role>("VIEWER");
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      api.createUser({ username: newName, password: newPassword, role: newRole }),
+    mutationFn: () => api.createUser({ username: newName, password: newPassword, role: newRole }),
     onSuccess: () => {
       setNewName("");
       setNewPassword("");
@@ -47,8 +41,7 @@ export function UsersPage() {
   });
 
   const roleMutation = useMutation({
-    mutationFn: (v: { id: string; role: Role }) =>
-      api.updateUser(v.id, { role: v.role }),
+    mutationFn: (v: { id: string; role: Role }) => api.updateUser(v.id, { role: v.role }),
     onSuccess: () => {
       setError(null);
       invalidate();
@@ -78,15 +71,15 @@ export function UsersPage() {
   };
 
   const onResetPassword = (u: UserDto) => {
-    const pw = prompt(`Neues Passwort für „${u.username}" (mind. 8 Zeichen):`);
+    const pw = prompt(t("resetPasswordPrompt", { name: u.username }));
     if (pw) passwordMutation.mutate({ id: u.id, password: pw });
   };
 
   const onDelete = async (u: UserDto) => {
     const ok = await confirmDialog({
-      title: "Benutzer löschen",
-      message: `Benutzer „${u.username}" wirklich löschen?`,
-      confirmLabel: "Löschen",
+      title: t("deleteTitle"),
+      message: t("deleteMessage", { name: u.username }),
+      confirmLabel: t("common:actions.delete"),
       danger: true,
     });
     if (ok) deleteMutation.mutate(u.id);
@@ -97,7 +90,7 @@ export function UsersPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="mb-6 text-2xl font-bold">Benutzerverwaltung</h1>
+      <h1 className="mb-6 text-2xl font-bold">{t("title")}</h1>
 
       {error && (
         <div className="mb-4 rounded-md border border-status-error/40 bg-status-error/10 px-4 py-2 text-sm text-status-error">
@@ -110,28 +103,28 @@ export function UsersPage() {
         className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-neutral-800 bg-neutral-900 p-4"
       >
         <div className="flex flex-col">
-          <label className="mb-1 text-xs text-neutral-500">Benutzername</label>
+          <label className="mb-1 text-xs text-neutral-500">{t("username")}</label>
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             required
             className={inputClass}
-            placeholder="z. B. moritz"
+            placeholder={t("usernamePlaceholder")}
           />
         </div>
         <div className="flex flex-col">
-          <label className="mb-1 text-xs text-neutral-500">Passwort</label>
+          <label className="mb-1 text-xs text-neutral-500">{t("password")}</label>
           <input
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             required
             className={inputClass}
-            placeholder="mind. 8 Zeichen"
+            placeholder={t("passwordPlaceholder")}
           />
         </div>
         <div className="flex flex-col">
-          <label className="mb-1 text-xs text-neutral-500">Rolle</label>
+          <label className="mb-1 text-xs text-neutral-500">{t("common:labels.role")}</label>
           <select
             value={newRole}
             onChange={(e) => setNewRole(e.target.value as Role)}
@@ -139,7 +132,7 @@ export function UsersPage() {
           >
             {ROLES.map((r) => (
               <option key={r} value={r}>
-                {ROLE_LABEL[r]}
+                {t(`roles.${r}`)}
               </option>
             ))}
           </select>
@@ -149,20 +142,20 @@ export function UsersPage() {
           disabled={createMutation.isPending}
           className="rounded-md bg-status-online px-4 py-2 text-sm font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
         >
-          Anlegen
+          {t("create")}
         </button>
       </form>
 
-      {isLoading && <p className="text-neutral-500">Lade…</p>}
+      {isLoading && <p className="text-neutral-500">{t("common:labels.loading")}</p>}
 
       <div className="overflow-hidden rounded-lg border border-neutral-800">
         <table className="w-full text-left text-sm">
           <thead className="bg-neutral-900 text-neutral-400">
             <tr>
-              <th className="px-4 py-2 font-medium">Benutzer</th>
-              <th className="px-4 py-2 font-medium">Rolle</th>
-              <th className="px-4 py-2 font-medium">Angelegt</th>
-              <th className="px-4 py-2 font-medium text-right">Aktionen</th>
+              <th className="px-4 py-2 font-medium">{t("table.user")}</th>
+              <th className="px-4 py-2 font-medium">{t("common:labels.role")}</th>
+              <th className="px-4 py-2 font-medium">{t("table.created")}</th>
+              <th className="px-4 py-2 font-medium text-right">{t("common:labels.actions")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-800">
@@ -172,9 +165,7 @@ export function UsersPage() {
                 <tr key={u.id} className="hover:bg-neutral-900/50">
                   <td className="px-4 py-2">
                     {u.username}
-                    {isSelf && (
-                      <span className="ml-2 text-xs text-neutral-600">(Sie)</span>
-                    )}
+                    {isSelf && <span className="ml-2 text-xs text-neutral-600">{t("self")}</span>}
                   </td>
                   <td className="px-4 py-2">
                     <select
@@ -186,7 +177,7 @@ export function UsersPage() {
                     >
                       {ROLES.map((r) => (
                         <option key={r} value={r}>
-                          {ROLE_LABEL[r]}
+                          {t(`roles.${r}`)}
                         </option>
                       ))}
                     </select>
@@ -199,15 +190,15 @@ export function UsersPage() {
                       onClick={() => onResetPassword(u)}
                       className="rounded px-2 py-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
                     >
-                      Passwort
+                      {t("password")}
                     </button>
                     <button
                       onClick={() => void onDelete(u)}
                       disabled={isSelf}
                       className="rounded px-2 py-1 text-status-error hover:bg-status-error/10 disabled:opacity-30"
-                      title={isSelf ? "Man kann sich nicht selbst löschen" : "Löschen"}
+                      title={isSelf ? t("cannotDeleteSelf") : t("common:actions.delete")}
                     >
-                      Löschen
+                      {t("common:actions.delete")}
                     </button>
                   </td>
                 </tr>

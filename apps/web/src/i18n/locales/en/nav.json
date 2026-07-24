@@ -1,0 +1,13 @@
+{
+  "dashboard": "Dashboard",
+  "networks": "Networks",
+  "players": "Players",
+  "users": "Users",
+  "audit": "Audit log",
+  "settings": "Settings",
+  "servers": "Servers",
+  "logout": "Log out",
+  "menu": "Menu",
+  "closeMenu": "Close menu",
+  "language": "Language"
+}

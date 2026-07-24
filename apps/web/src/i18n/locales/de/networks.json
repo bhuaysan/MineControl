@@ -1,0 +1,58 @@
+{
+  "title": "Netzwerke",
+  "subtitle": "Velocity-Proxy mit Subservern als Gruppe – Spieler verbinden sich über einen Port.",
+  "actionFailed": "Aktion fehlgeschlagen",
+  "loading": "Lade Netzwerke…",
+  "loadError": "Netzwerke konnten nicht geladen werden.",
+  "empty": {
+    "title": "Noch kein Netzwerk.",
+    "adminHint": "Erstelle einen Velocity-Proxy, um Server zu bündeln.",
+    "userHint": "Ein Admin kann eines anlegen."
+  },
+  "create": {
+    "toggle": "+ Netzwerk erstellen",
+    "name": "Netzwerkname",
+    "namePlaceholder": "Mein Netzwerk",
+    "proxyName": "Proxy-Servername",
+    "proxyNamePlaceholder": "(wie Netzwerkname)",
+    "proxySoftware": "Proxy-Software",
+    "editionVelocity": "Velocity (auch modded Subserver)",
+    "editionBungee": "BungeeCord (nur Paper/Spigot)",
+    "version": "Velocity-Version",
+    "versionIrrelevant": "(nicht relevant)",
+    "port": "Port (Netzwerk-Eingang)",
+    "proxyRam": "Proxy-RAM: {{mb}} MB",
+    "submit": "Netzwerk erstellen",
+    "submitting": "Erstelle…"
+  },
+  "card": {
+    "proxyPrefix": "Proxy",
+    "subservers": "Subserver ({{count}})",
+    "noSubservers": "Noch keine Subserver zugeordnet.",
+    "detach": "Lösen",
+    "addSubserver": "+ Subserver hinzufügen"
+  },
+  "delete": {
+    "title": "Netzwerk löschen",
+    "message": "Netzwerk „{{name}}\" löschen? Der Proxy wird entfernt, die Subserver bleiben als eigenständige Server erhalten."
+  },
+  "detach": {
+    "title": "Subserver lösen",
+    "message": "„{{name}}\" aus dem Netzwerk lösen?",
+    "confirm": "Lösen"
+  },
+  "add": {
+    "modeAttach": "Bestehenden anhängen",
+    "modeCreate": "Neu erstellen",
+    "alias": "Alias (Proxy-Servername, klein/kurz)",
+    "noEligible": "Kein freier passender Docker-Server verfügbar ({{editions}}).",
+    "serverLabel": "Server",
+    "choose": "– wählen –",
+    "attachHint": "Paper/Spigot-Server müssen einmal gestartet worden sein; modded Server werden beim Anhängen automatisch vorbereitet (Forwarding-Mod-Install + Neustarts).",
+    "edition": "Edition",
+    "version": "Version",
+    "port": "Port",
+    "ram": "RAM: {{mb}} MB",
+    "attach": "Anhängen"
+  }
+}

@@ -1,23 +1,19 @@
 import type { MetricSampleDto } from "@minecontrol/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "../lib/api.js";
 
 type Range = "1h" | "6h" | "24h" | "7d";
 type MetricKey = "players" | "cpu" | "ram" | "tps";
 
-const RANGES: [Range, string][] = [
-  ["1h", "1 h"],
-  ["6h", "6 h"],
-  ["24h", "24 h"],
-  ["7d", "7 d"],
-];
+const RANGES: Range[] = ["1h", "6h", "24h", "7d"];
 
-const METRICS: { key: MetricKey; label: string; color: string }[] = [
-  { key: "players", label: "Spieler", color: "#4ade80" },
-  { key: "cpu", label: "CPU", color: "#fbbf24" },
-  { key: "ram", label: "RAM", color: "#60a5fa" },
-  { key: "tps", label: "TPS", color: "#f472b6" },
+const METRICS: { key: MetricKey; color: string }[] = [
+  { key: "players", color: "#4ade80" },
+  { key: "cpu", color: "#fbbf24" },
+  { key: "ram", color: "#60a5fa" },
+  { key: "tps", color: "#f472b6" },
 ];
 
 interface Point {
@@ -45,6 +41,7 @@ const H = 180;
 const PAD = { top: 12, right: 12, bottom: 22, left: 40 };
 
 export function MetricHistoryChart({ serverId }: { serverId: string }) {
+  const { t } = useTranslation("metrics");
   const [range, setRange] = useState<Range>("6h");
   const [metric, setMetric] = useState<MetricKey>("players");
 
@@ -65,12 +62,12 @@ export function MetricHistoryChart({ serverId }: { serverId: string }) {
   const tMax = points.length ? points[points.length - 1]!.t : 1;
   const tSpan = Math.max(tMax - tMin, 1);
 
-  const x = (t: number) =>
-    PAD.left + ((t - tMin) / tSpan) * (W - PAD.left - PAD.right);
-  const y = (v: number) =>
-    H - PAD.bottom - (v / maxV) * (H - PAD.top - PAD.bottom);
+  const x = (t: number) => PAD.left + ((t - tMin) / tSpan) * (W - PAD.left - PAD.right);
+  const y = (v: number) => H - PAD.bottom - (v / maxV) * (H - PAD.top - PAD.bottom);
 
-  const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+  const line = points
+    .map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`)
+    .join(" ");
   const area =
     points.length > 1
       ? `${line} L${x(tMax).toFixed(1)},${(H - PAD.bottom).toFixed(1)} L${x(tMin).toFixed(1)},${(H - PAD.bottom).toFixed(1)} Z`
@@ -93,12 +90,12 @@ export function MetricHistoryChart({ serverId }: { serverId: string }) {
                   : "text-neutral-400 hover:text-neutral-200"
               }`}
             >
-              {m.label}
+              {t(`metrics.${m.key}`)}
             </button>
           ))}
         </div>
         <div className="flex gap-1">
-          {RANGES.map(([r, label]) => (
+          {RANGES.map((r) => (
             <button
               key={r}
               onClick={() => setRange(r)}
@@ -108,20 +105,23 @@ export function MetricHistoryChart({ serverId }: { serverId: string }) {
                   : "text-neutral-400 hover:text-neutral-200"
               }`}
             >
-              {label}
+              {t(`ranges.${r}`)}
             </button>
           ))}
         </div>
       </div>
 
       {isLoading ? (
-        <p className="py-8 text-center text-sm text-neutral-500">Lade Historie…</p>
+        <p className="py-8 text-center text-sm text-neutral-500">{t("loading")}</p>
       ) : points.length < 2 ? (
-        <p className="py-8 text-center text-sm text-neutral-500">
-          Noch nicht genug Daten – Messwerte werden minütlich erfasst.
-        </p>
+        <p className="py-8 text-center text-sm text-neutral-500">{t("notEnoughData")}</p>
       ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`${meta.label}-Verlauf`}>
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="w-full"
+          role="img"
+          aria-label={t("chartLabel", { metric: t(`metrics.${metric}`) })}
+        >
           {/* Y-Gitterlinien + Beschriftung */}
           {[0, 0.5, 1].map((f) => {
             const gy = PAD.top + f * (H - PAD.top - PAD.bottom);
@@ -137,7 +137,12 @@ export function MetricHistoryChart({ serverId }: { serverId: string }) {
                   className="text-neutral-800"
                   strokeWidth={1}
                 />
-                <text x={PAD.left - 6} y={gy + 3} textAnchor="end" className="fill-neutral-500 text-[9px]">
+                <text
+                  x={PAD.left - 6}
+                  y={gy + 3}
+                  textAnchor="end"
+                  className="fill-neutral-500 text-[9px]"
+                >
                   {metric === "ram" ? Math.round(val) : val.toFixed(metric === "cpu" ? 0 : 0)}
                 </text>
               </g>
@@ -160,7 +165,7 @@ export function MetricHistoryChart({ serverId }: { serverId: string }) {
         </svg>
       )}
       <p className="mt-1 text-right text-xs text-neutral-500">
-        aktuell:{" "}
+        {t("current")}{" "}
         <span className="font-mono text-neutral-300">
           {points.length ? points[points.length - 1]!.v : "–"}
           {unit}

@@ -1,0 +1,35 @@
+{
+  "title": "Zeitpläne",
+  "loading": "Lade Zeitpläne…",
+  "empty": "Noch keine geplanten Aufgaben.",
+  "actionLabels": {
+    "RESTART": "Neustart",
+    "COMMAND": "Befehl",
+    "BACKUP": "Backup"
+  },
+  "cronPresets": {
+    "0": "täglich 4 Uhr",
+    "1": "alle 6 h",
+    "2": "alle 30 min"
+  },
+  "paused": "pausiert",
+  "lastRun": " · zuletzt {{time}}",
+  "errorPrefix": "Fehler: {{message}}",
+  "runNow": "Jetzt",
+  "pause": "Pause",
+  "resume": "Aktiv",
+  "deleteConfirm": {
+    "title": "Zeitplan löschen",
+    "message": "Zeitplan „{{name}}\" löschen?"
+  },
+  "form": {
+    "title": "Neuer Zeitplan",
+    "namePlaceholder": "Name (z. B. Nächtlicher Restart)",
+    "cronPlaceholder": "Cron (Min Std Tag Monat Wochentag)",
+    "commandPlaceholder": "Befehl (z. B. say Neustart in 5 Min)",
+    "retention": "Aufbewahrung:",
+    "backupsSuffix": "Backups",
+    "submit": "Zeitplan anlegen",
+    "submitting": "Erstelle…"
+  }
+}

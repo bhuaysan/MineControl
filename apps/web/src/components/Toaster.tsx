@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import type { Toast, ToastVariant } from "../lib/toast.js";
 import { dismissToast, subscribeToasts } from "../lib/toast.js";
@@ -26,6 +27,7 @@ function subscribe(cb: () => void): () => void {
  * jedem Layout liegen). Wird einmal in App gemountet.
  */
 export function Toaster(): React.ReactElement | null {
+  const { t } = useTranslation("common");
   const toasts = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   if (typeof document === "undefined") return null;
 
@@ -35,27 +37,25 @@ export function Toaster(): React.ReactElement | null {
       aria-live="polite"
       aria-atomic="false"
     >
-      {toasts.map((t) => {
-        const v = VARIANT[t.variant];
+      {toasts.map((item) => {
+        const v = VARIANT[item.variant];
         return (
           <div
-            key={t.id}
-            role={t.variant === "error" ? "alert" : "status"}
+            key={item.id}
+            role={item.variant === "error" ? "alert" : "status"}
             className={`pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-lg border ${v.ring} bg-neutral-900/95 px-4 py-3 shadow-lg shadow-black/40 backdrop-blur`}
           >
             <span className={`mt-0.5 text-sm font-bold ${v.accent}`} aria-hidden>
               {v.icon}
             </span>
             <div className="min-w-0 flex-1">
-              {t.title && (
-                <p className="text-sm font-semibold text-neutral-100">{t.title}</p>
-              )}
-              <p className="break-words text-sm text-neutral-300">{t.message}</p>
+              {item.title && <p className="text-sm font-semibold text-neutral-100">{item.title}</p>}
+              <p className="break-words text-sm text-neutral-300">{item.message}</p>
             </div>
             <button
-              onClick={() => dismissToast(t.id)}
+              onClick={() => dismissToast(item.id)}
               className="text-neutral-500 hover:text-neutral-200"
-              aria-label="Schließen"
+              aria-label={t("actions.close")}
             >
               ✕
             </button>

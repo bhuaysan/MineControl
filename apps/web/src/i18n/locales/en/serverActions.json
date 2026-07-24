@@ -1,0 +1,20 @@
+{
+  "start": "Start",
+  "stop": "Stop",
+  "restart": "Restart",
+  "kill": "Kill",
+  "continue": "Continue",
+  "confirmStop": "Really stop server “{{name}}”? Active players will be disconnected.",
+  "confirmRestart": "Restart server “{{name}}”?",
+  "confirmKill": "Force-kill server “{{name}}”? The container will be terminated immediately — data loss possible.",
+  "autoRestart": "Auto-restart",
+  "autoRestartTitle": "Automatically restarts the container when Minecraft is unreachable for too long (hang/crashloop).",
+  "toast": {
+    "start": "Server is starting",
+    "stop": "Server is stopping",
+    "restart": "Server is restarting",
+    "kill": "Server is being force-stopped",
+    "autoRestartEnabled": "Auto-restart enabled",
+    "autoRestartDisabled": "Auto-restart disabled"
+  }
+}

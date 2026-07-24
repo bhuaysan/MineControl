@@ -1,16 +1,8 @@
-import type {
-  ConnectionTestResult,
-  DockerEdition,
-  ServerEdition,
-} from "@minecontrol/shared";
-import {
-  DIFFICULTIES,
-  DOCKER_EDITIONS,
-  GAMEMODES,
-  SERVER_EDITIONS,
-} from "@minecontrol/shared";
+import type { ConnectionTestResult, DockerEdition, ServerEdition } from "@minecontrol/shared";
+import { DIFFICULTIES, DOCKER_EDITIONS, GAMEMODES, SERVER_EDITIONS } from "@minecontrol/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { serversQueryKey } from "../hooks/useServers.js";
 import { api } from "../lib/api.js";
@@ -22,25 +14,26 @@ const inputClass =
 type Mode = "docker" | "external";
 
 export function AddServerPage() {
+  const { t } = useTranslation("addServer");
   const [mode, setMode] = useState<Mode>("docker");
 
   return (
     <div className="mx-auto max-w-lg">
-      <h1 className="mb-6 text-2xl font-bold">Server hinzufügen</h1>
+      <h1 className="mb-6 text-2xl font-bold">{t("title")}</h1>
 
       <div className="mb-6 grid grid-cols-2 gap-3">
         <ModeCard
           active={mode === "docker"}
           onClick={() => setMode("docker")}
-          title="Neu erstellen"
-          subtitle="Docker-Container (itzg)"
+          title={t("mode.dockerTitle")}
+          subtitle={t("mode.dockerSubtitle")}
           icon="🐳"
         />
         <ModeCard
           active={mode === "external"}
           onClick={() => setMode("external")}
-          title="Extern verbinden"
-          subtitle="Bestehender Server (RCON)"
+          title={t("mode.externalTitle")}
+          subtitle={t("mode.externalSubtitle")}
           icon="🔌"
         />
       </div>
@@ -83,6 +76,7 @@ function ModeCard({
 // ── Docker-Wizard ────────────────────────────────────────────────────────────
 
 function DockerForm() {
+  const { t } = useTranslation("addServer");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -153,18 +147,18 @@ function DockerForm() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <Field label="Anzeigename">
+      <Field label={t("displayName")}>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
           className={inputClass}
-          placeholder="z. B. Survival"
+          placeholder={t("docker.namePlaceholder")}
         />
       </Field>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Edition">
+        <Field label={t("docker.edition")}>
           <select
             value={edition}
             onChange={(e) => setEdition(e.target.value as DockerEdition)}
@@ -177,45 +171,39 @@ function DockerForm() {
             ))}
           </select>
         </Field>
-        <Field label="MC-Version">
+        <Field label={t("docker.mcVersion")}>
           <input
             value={version}
             onChange={(e) => setVersion(e.target.value)}
             disabled={usingModpack}
             className={`${inputClass} ${usingModpack ? "opacity-50" : ""}`}
-            placeholder="LATEST oder 1.21.1"
+            placeholder={t("docker.mcVersionPlaceholder")}
           />
         </Field>
       </div>
 
-      <Field label="Modrinth-Modpack (optional)">
+      <Field label={t("docker.modrinth")}>
         <input
           value={modpack}
           onChange={(e) => setModpack(e.target.value)}
           disabled={usingCurseforge}
           className={`${inputClass} ${usingCurseforge ? "opacity-50" : ""}`}
-          placeholder="z. B. cobblemon oder .mrpack-URL"
+          placeholder={t("docker.modrinthPlaceholder")}
         />
       </Field>
 
-      <Field label="CurseForge-Modpack (optional)">
+      <Field label={t("docker.curseforge")}>
         <input
           value={cfModpack}
           onChange={(e) => setCfModpack(e.target.value)}
           disabled={usingModrinth}
           className={`${inputClass} ${usingModrinth ? "opacity-50" : ""}`}
-          placeholder="z. B. all-the-mods-9 oder Modpack-URL"
+          placeholder={t("docker.curseforgePlaceholder")}
         />
-        {usingModpack && (
-          <p className="mt-1 text-xs text-neutral-500">
-            Der Pack bestimmt Loader &amp; Version. Wähle die Edition passend zum
-            Pack-Loader (meist FORGE/FABRIC/NEOFORGE), damit der Plugins/Mods-Tab
-            funktioniert. Der erste Start dauert länger (Pack-Download).
-          </p>
-        )}
+        {usingModpack && <p className="mt-1 text-xs text-neutral-500">{t("docker.modpackHint")}</p>}
       </Field>
 
-      <Field label={`Arbeitsspeicher: ${(memoryMb / 1024).toFixed(1)} GB`}>
+      <Field label={t("docker.memory", { gb: (memoryMb / 1024).toFixed(1) })}>
         <input
           type="range"
           min={512}
@@ -228,7 +216,7 @@ function DockerForm() {
       </Field>
 
       <div className="grid grid-cols-3 gap-3">
-        <Field label="Port">
+        <Field label={t("docker.port")}>
           <input
             type="number"
             value={port}
@@ -236,12 +224,10 @@ function DockerForm() {
             className={inputClass}
           />
         </Field>
-        <Field label="Schwierigkeit">
+        <Field label={t("docker.difficulty")}>
           <select
             value={difficulty}
-            onChange={(e) =>
-              setDifficulty(e.target.value as (typeof DIFFICULTIES)[number])
-            }
+            onChange={(e) => setDifficulty(e.target.value as (typeof DIFFICULTIES)[number])}
             disabled={importEnabled}
             className={`${inputClass} ${importEnabled ? "opacity-50" : ""}`}
           >
@@ -252,7 +238,7 @@ function DockerForm() {
             ))}
           </select>
         </Field>
-        <Field label="Spielmodus">
+        <Field label={t("docker.gamemode")}>
           <select
             value={gamemode}
             onChange={(e) => setGamemode(e.target.value as (typeof GAMEMODES)[number])}
@@ -269,21 +255,21 @@ function DockerForm() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Welt-Seed (optional)">
+        <Field label={t("docker.seed")}>
           <input
             value={seed}
             onChange={(e) => setSeed(e.target.value)}
             disabled={importEnabled}
             className={`${inputClass} ${importEnabled ? "opacity-50" : ""}`}
-            placeholder="leer = zufällig"
+            placeholder={t("docker.seedPlaceholder")}
           />
         </Field>
-        <Field label="MOTD (optional)">
+        <Field label={t("docker.motd")}>
           <input
             value={motd}
             onChange={(e) => setMotd(e.target.value)}
             className={inputClass}
-            placeholder="Anzeigename verwenden"
+            placeholder={t("docker.motdPlaceholder")}
           />
         </Field>
       </div>
@@ -295,7 +281,7 @@ function DockerForm() {
           onChange={(e) => setOnlineMode(e.target.checked)}
           className="size-4 accent-status-online"
         />
-        Online-Modus (Mojang-Authentifizierung)
+        {t("docker.onlineMode")}
       </label>
 
       {!usingModpack && (
@@ -319,29 +305,29 @@ function DockerForm() {
           className="mt-0.5 size-4 accent-status-online"
         />
         <span>
-          Ich akzeptiere die{" "}
-          <a
-            href="https://www.minecraft.net/eula"
-            target="_blank"
-            rel="noreferrer"
-            className="text-status-online hover:underline"
-          >
-            Minecraft-EULA
-          </a>
-          .
+          <Trans
+            t={t}
+            i18nKey="docker.eula"
+            components={[
+              <a
+                key="eula"
+                href="https://www.minecraft.net/eula"
+                target="_blank"
+                rel="noreferrer"
+                className="text-status-online hover:underline"
+              />,
+            ]}
+          />
         </span>
       </label>
 
       {importIncomplete && (
-        <p className="text-sm text-status-pending">
-          Bitte eine Import-Quelle wählen oder den Import deaktivieren.
-        </p>
+        <p className="text-sm text-status-pending">{t("docker.importIncomplete")}</p>
       )}
 
       {createMutation.isError && (
         <p className="text-sm text-status-error">
-          {(createMutation.error as Error).message ||
-            "Server konnte nicht erstellt werden."}
+          {(createMutation.error as Error).message || t("docker.createError")}
         </p>
       )}
 
@@ -351,14 +337,14 @@ function DockerForm() {
           disabled={!eula || importIncomplete || createMutation.isPending}
           className="rounded-md bg-status-online px-4 py-2 font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
         >
-          {createMutation.isPending ? "Erstelle…" : "Server erstellen"}
+          {createMutation.isPending ? t("docker.creating") : t("docker.submit")}
         </button>
         <button
           type="button"
           onClick={() => navigate("/")}
           className="rounded-md px-4 py-2 text-neutral-400 hover:text-neutral-200"
         >
-          Abbrechen
+          {t("common:actions.cancel")}
         </button>
       </div>
     </form>
@@ -386,6 +372,7 @@ function ImportSection({
   pathFilename: string;
   setPathFilename: (v: string) => void;
 }) {
+  const { t } = useTranslation("addServer");
   const fileRef = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<number | null>(null);
 
@@ -418,19 +405,25 @@ function ImportSection({
             onChange={(e) => setEnabled(e.target.checked)}
             className="size-4 accent-status-online"
           />
-          Bestehende Welt / bestehenden Server importieren
+          {t("import.toggle")}
         </label>
       </legend>
 
       {enabled && (
         <div className="space-y-3 pt-1">
           <p className="text-xs text-neutral-500">
-            Ein komplettes Server-Verzeichnis als <code>.tar.gz</code> (mit{" "}
-            <code>world/</code>, optional <code>plugins/</code>, <code>mods/</code>,{" "}
-            <code>config/</code>, <code>server.properties</code>) wird vor dem ersten
-            Start übernommen; die enthaltene Welt wird aktiviert. Wähle Edition &amp;
-            MC-Version passend zum Ursprungs-Server. Ein umschließender Ordner im
-            Archiv wird automatisch erkannt.
+            <Trans
+              t={t}
+              i18nKey="import.description"
+              components={[
+                <code key="0" />,
+                <code key="1" />,
+                <code key="2" />,
+                <code key="3" />,
+                <code key="4" />,
+                <code key="5" />,
+              ]}
+            />
           </p>
 
           <div className="flex gap-4 text-sm text-neutral-300">
@@ -442,7 +435,7 @@ function ImportSection({
                 onChange={() => setMode("upload")}
                 className="accent-status-online"
               />
-              Datei hochladen
+              {t("import.modeUpload")}
             </label>
             <label className="flex items-center gap-2">
               <input
@@ -452,7 +445,7 @@ function ImportSection({
                 onChange={() => setMode("path")}
                 className="accent-status-online"
               />
-              Vom Server-Verzeichnis
+              {t("import.modePath")}
             </label>
           </div>
 
@@ -477,23 +470,21 @@ function ImportSection({
                 </div>
               )}
               {stagingId && progress === null && (
-                <p className="text-xs text-status-online">Hochgeladen ✓</p>
+                <p className="text-xs text-status-online">{t("import.uploaded")}</p>
               )}
               {upload.isError && (
                 <p className="text-xs text-status-error">
-                  {(upload.error as Error).message || "Upload fehlgeschlagen"}
+                  {(upload.error as Error).message || t("import.uploadFailed")}
                 </p>
               )}
             </div>
           ) : (
             <div className="space-y-2">
               {sourcesQuery.isLoading && (
-                <p className="text-xs text-neutral-500">Lade Dateien…</p>
+                <p className="text-xs text-neutral-500">{t("import.loadingFiles")}</p>
               )}
               {sourcesQuery.data && sourcesQuery.data.length === 0 && (
-                <p className="text-xs text-neutral-500">
-                  Keine Archive im Import-Verzeichnis gefunden.
-                </p>
+                <p className="text-xs text-neutral-500">{t("import.noArchives")}</p>
               )}
               {sourcesQuery.data && sourcesQuery.data.length > 0 && (
                 <select
@@ -501,7 +492,7 @@ function ImportSection({
                   onChange={(e) => setPathFilename(e.target.value)}
                   className={inputClass}
                 >
-                  <option value="">— Datei wählen —</option>
+                  <option value="">{t("import.chooseFile")}</option>
                   {sourcesQuery.data.map((s) => (
                     <option key={s.filename} value={s.filename}>
                       {s.filename} ({formatBytes(s.sizeBytes)})
@@ -510,9 +501,7 @@ function ImportSection({
                 </select>
               )}
               {sourcesQuery.isError && (
-                <p className="text-xs text-status-error">
-                  Import-Verzeichnis konnte nicht gelesen werden.
-                </p>
+                <p className="text-xs text-status-error">{t("import.readError")}</p>
               )}
             </div>
           )}
@@ -525,6 +514,7 @@ function ImportSection({
 // ── Extern verbinden (Phase 1) ───────────────────────────────────────────────
 
 function ExternalForm() {
+  const { t } = useTranslation("addServer");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -570,29 +560,29 @@ function ExternalForm() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <Field label="Anzeigename">
+      <Field label={t("displayName")}>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
           className={inputClass}
-          placeholder="z. B. SMP"
+          placeholder={t("external.namePlaceholder")}
         />
       </Field>
 
       <div className="grid grid-cols-3 gap-3">
         <div className="col-span-2">
-          <Field label="Host">
+          <Field label={t("external.host")}>
             <input
               value={host}
               onChange={(e) => setHost(e.target.value)}
               required
               className={inputClass}
-              placeholder="mc.beispiel.de"
+              placeholder={t("external.hostPlaceholder")}
             />
           </Field>
         </div>
-        <Field label="Port">
+        <Field label={t("external.port")}>
           <input
             type="number"
             value={port}
@@ -602,7 +592,7 @@ function ExternalForm() {
         </Field>
       </div>
 
-      <Field label="Edition">
+      <Field label={t("external.edition")}>
         <select
           value={edition}
           onChange={(e) => setEdition(e.target.value as ServerEdition)}
@@ -617,24 +607,22 @@ function ExternalForm() {
       </Field>
 
       <fieldset className="rounded-md border border-neutral-800 p-3">
-        <legend className="px-1 text-sm text-neutral-400">
-          RCON (optional – für Befehle & Stop)
-        </legend>
+        <legend className="px-1 text-sm text-neutral-400">{t("external.rconLegend")}</legend>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <label className="mb-1 block text-xs text-neutral-500">Port</label>
+            <label className="mb-1 block text-xs text-neutral-500">{t("external.rconPort")}</label>
             <input
               type="number"
               value={rconPort}
-              onChange={(e) =>
-                setRconPort(e.target.value === "" ? "" : Number(e.target.value))
-              }
+              onChange={(e) => setRconPort(e.target.value === "" ? "" : Number(e.target.value))}
               className={inputClass}
-              placeholder="25575"
+              placeholder={t("external.rconPortPlaceholder")}
             />
           </div>
           <div className="col-span-2">
-            <label className="mb-1 block text-xs text-neutral-500">Passwort</label>
+            <label className="mb-1 block text-xs text-neutral-500">
+              {t("external.rconPassword")}
+            </label>
             <input
               type="password"
               value={rconPassword}
@@ -652,24 +640,26 @@ function ExternalForm() {
           disabled={!host || testMutation.isPending}
           className="rounded-md border border-neutral-700 px-4 py-2 text-sm hover:bg-neutral-800 disabled:opacity-50"
         >
-          {testMutation.isPending ? "Teste…" : "Verbindung testen"}
+          {testMutation.isPending ? t("external.testing") : t("external.test")}
         </button>
 
         {test && (
           <span className="text-sm">
-            Ping:{" "}
+            {t("external.ping")}
             {test.ping.ok ? (
-              <span className="text-status-online">OK ({test.ping.latencyMs} ms)</span>
+              <span className="text-status-online">
+                {t("external.pingOk", { ms: test.ping.latencyMs })}
+              </span>
             ) : (
-              <span className="text-status-error">fehlgeschlagen</span>
+              <span className="text-status-error">{t("external.failed")}</span>
             )}
             {test.rcon && (
               <>
-                {" · RCON: "}
+                {t("external.rconLabel")}
                 {test.rcon.ok ? (
-                  <span className="text-status-online">OK</span>
+                  <span className="text-status-online">{t("external.ok")}</span>
                 ) : (
-                  <span className="text-status-error">fehlgeschlagen</span>
+                  <span className="text-status-error">{t("external.failed")}</span>
                 )}
               </>
             )}
@@ -678,9 +668,7 @@ function ExternalForm() {
       </div>
 
       {createMutation.isError && (
-        <p className="text-sm text-status-error">
-          Server konnte nicht gespeichert werden.
-        </p>
+        <p className="text-sm text-status-error">{t("external.createError")}</p>
       )}
 
       <div className="flex gap-3 pt-2">
@@ -689,14 +677,14 @@ function ExternalForm() {
           disabled={createMutation.isPending}
           className="rounded-md bg-status-online px-4 py-2 font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
         >
-          {createMutation.isPending ? "Speichern…" : "Server hinzufügen"}
+          {createMutation.isPending ? t("external.saving") : t("external.submit")}
         </button>
         <button
           type="button"
           onClick={() => navigate("/")}
           className="rounded-md px-4 py-2 text-neutral-400 hover:text-neutral-200"
         >
-          Abbrechen
+          {t("common:actions.cancel")}
         </button>
       </div>
     </form>

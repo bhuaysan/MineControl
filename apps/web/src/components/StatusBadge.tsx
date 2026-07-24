@@ -1,12 +1,14 @@
 import type { ServerState } from "@minecontrol/shared";
+import { useTranslation } from "react-i18next";
 
-const LABELS: Record<ServerState, string> = {
-  ONLINE: "Online",
-  STARTING: "Startet",
-  STOPPING: "Stoppt",
-  OFFLINE: "Offline",
-  ERROR: "Fehler",
-  UNKNOWN: "Unbekannt",
+/** Bildet jeden Serverstatus auf einen Schlüssel unter `common:status.*` ab. */
+const STATUS_KEY: Record<ServerState, string> = {
+  ONLINE: "online",
+  STARTING: "starting",
+  STOPPING: "stopping",
+  OFFLINE: "offline",
+  ERROR: "error",
+  UNKNOWN: "unknown",
 };
 
 const DOT: Record<ServerState, string> = {
@@ -23,10 +25,11 @@ export function StatusDot({ state }: { state: ServerState }) {
 }
 
 export function StatusBadge({ state }: { state: ServerState }) {
+  const { t } = useTranslation("common");
   return (
     <span className="inline-flex items-center gap-1.5 text-sm font-medium">
       <StatusDot state={state} />
-      {LABELS[state]}
+      {t(`status.${STATUS_KEY[state]}`)}
     </span>
   );
 }

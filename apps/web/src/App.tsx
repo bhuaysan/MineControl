@@ -2,6 +2,7 @@ import type { Role } from "@minecontrol/shared";
 import { hasRole } from "@minecontrol/shared";
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext.js";
 import { AppShell } from "./components/AppShell.js";
@@ -39,11 +40,12 @@ const queryClient = new QueryClient({
  * Mit `role` wird zusätzlich eine Mindestrolle verlangt.
  */
 function RequireAuth({ children, role }: { children: ReactNode; role?: Role }) {
+  const { t } = useTranslation();
   const { user, loading } = useAuth();
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center text-neutral-500">
-        Lade…
+        {t("labels.loading")}
       </div>
     );
   }
@@ -51,7 +53,7 @@ function RequireAuth({ children, role }: { children: ReactNode; role?: Role }) {
   if (role && !hasRole(user.role, role)) {
     return (
       <AppShell>
-        <p className="text-status-error">Keine Berechtigung für diese Seite.</p>
+        <p className="text-status-error">{t("errors.noPermission")}</p>
       </AppShell>
     );
   }

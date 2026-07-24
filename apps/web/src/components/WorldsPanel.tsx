@@ -1,6 +1,7 @@
 import { WORLD_NAME_REGEX } from "@minecontrol/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthContext.js";
 import { ApiRequestError, api } from "../lib/api.js";
 import { confirmDialog } from "../lib/confirm.js";
@@ -9,11 +10,12 @@ import { formatBytes } from "../lib/format.js";
 const inputClass =
   "rounded-md border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-sm outline-none focus:border-status-online";
 
-function errMessage(err: unknown): string {
-  return err instanceof ApiRequestError ? err.message : "Aktion fehlgeschlagen";
+function errMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiRequestError ? err.message : fallback;
 }
 
 export function WorldsPanel({ serverId }: { serverId: string }) {
+  const { t } = useTranslation(["worlds", "common"]);
   const { can } = useAuth();
   const isAdmin = can("ADMIN");
   const qc = useQueryClient();
@@ -42,11 +44,11 @@ export function WorldsPanel({ serverId }: { serverId: string }) {
   return (
     <div className="space-y-6">
       <section>
-        <h3 className="mb-2 text-sm font-semibold text-neutral-300">Welten</h3>
-        {isLoading && <p className="text-neutral-500">Lade Welten…</p>}
+        <h3 className="mb-2 text-sm font-semibold text-neutral-300">{t("title")}</h3>
+        {isLoading && <p className="text-neutral-500">{t("loading")}</p>}
         {error && (
           <p className="text-status-error">
-            {errMessage(error)} – der Server muss dafür laufen.
+            {errMessage(error, t("actionFailed"))} {t("needsRunning")}
           </p>
         )}
         {data && data.worlds.length > 0 && (
@@ -60,7 +62,7 @@ export function WorldsPanel({ serverId }: { serverId: string }) {
                   <span className="truncate font-medium text-neutral-100">{w.name}</span>
                   {w.active && (
                     <span className="rounded bg-status-online/20 px-1.5 py-0.5 text-xs text-status-online">
-                      aktiv
+                      {t("active")}
                     </span>
                   )}
                   <span className="text-xs text-neutral-500">{formatBytes(w.sizeBytes)}</span>
@@ -71,7 +73,7 @@ export function WorldsPanel({ serverId }: { serverId: string }) {
                       href={api.worldDownloadUrl(serverId)}
                       className="rounded-md border border-neutral-700 px-2 py-0.5 text-xs text-neutral-300 hover:bg-neutral-800"
                     >
-                      Download
+                      {t("download")}
                     </a>
                   )}
                   {isAdmin && !w.active && (
@@ -79,29 +81,29 @@ export function WorldsPanel({ serverId }: { serverId: string }) {
                       <button
                         onClick={() =>
                           void confirmDialog({
-                            title: "Welt wechseln",
-                            message: `Zur Welt „${w.name}" wechseln? Der Server startet dazu neu.`,
-                            confirmLabel: "Wechseln",
+                            title: t("switchConfirm.title"),
+                            message: t("switchConfirm.message", { name: w.name }),
+                            confirmLabel: t("switchConfirm.confirmLabel"),
                           }).then((ok) => ok && switchMut.mutate(w.name))
                         }
                         disabled={switchMut.isPending}
                         className="rounded-md border border-neutral-700 px-2 py-0.5 text-xs text-neutral-200 hover:bg-neutral-800 disabled:opacity-50"
                       >
-                        Aktivieren
+                        {t("activate")}
                       </button>
                       <button
                         onClick={() =>
                           void confirmDialog({
-                            title: "Welt löschen",
-                            message: `Welt „${w.name}" endgültig löschen?`,
-                            confirmLabel: "Löschen",
+                            title: t("deleteConfirm.title"),
+                            message: t("deleteConfirm.message", { name: w.name }),
+                            confirmLabel: t("common:actions.delete"),
                             danger: true,
                           }).then((ok) => ok && deleteMut.mutate(w.name))
                         }
                         disabled={deleteMut.isPending}
                         className="rounded-md border border-neutral-700 px-2 py-0.5 text-xs text-status-error hover:bg-neutral-800 disabled:opacity-50"
                       >
-                        Löschen
+                        {t("common:actions.delete")}
                       </button>
                     </>
                   )}
@@ -112,7 +114,7 @@ export function WorldsPanel({ serverId }: { serverId: string }) {
         )}
         {(switchMut.isError || deleteMut.isError) && (
           <p className="mt-2 text-sm text-status-error">
-            {errMessage(switchMut.error ?? deleteMut.error)}
+            {errMessage(switchMut.error ?? deleteMut.error, t("actionFailed"))}
           </p>
         )}
       </section>
@@ -134,6 +136,7 @@ export function WorldsPanel({ serverId }: { serverId: string }) {
 // ── Neue Welt ─────────────────────────────────────────────────────────────────
 
 function CreateWorldForm({ serverId, onDone }: { serverId: string; onDone: () => void }) {
+  const { t } = useTranslation(["worlds", "common"]);
   const [name, setName] = useState("");
   const [seed, setSeed] = useState("");
   const mut = useMutation({
@@ -148,10 +151,8 @@ function CreateWorldForm({ serverId, onDone }: { serverId: string; onDone: () =>
 
   return (
     <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-      <h3 className="mb-2 text-sm font-semibold text-neutral-300">Neue Welt erstellen</h3>
-      <p className="mb-3 text-xs text-neutral-500">
-        Setzt die aktive Welt neu und startet den Server neu; die Welt wird beim Start generiert.
-      </p>
+      <h3 className="mb-2 text-sm font-semibold text-neutral-300">{t("create.title")}</h3>
+      <p className="mb-3 text-xs text-neutral-500">{t("create.description")}</p>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -160,7 +161,7 @@ function CreateWorldForm({ serverId, onDone }: { serverId: string; onDone: () =>
         className="flex flex-wrap items-end gap-3"
       >
         <label className="text-sm">
-          <span className="mb-1 block text-neutral-400">Name</span>
+          <span className="mb-1 block text-neutral-400">{t("common:labels.name")}</span>
           <input
             required
             value={name}
@@ -170,22 +171,20 @@ function CreateWorldForm({ serverId, onDone }: { serverId: string; onDone: () =>
           />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-neutral-400">Seed (optional)</span>
-          <input
-            value={seed}
-            onChange={(e) => setSeed(e.target.value)}
-            className={inputClass}
-          />
+          <span className="mb-1 block text-neutral-400">{t("create.seedLabel")}</span>
+          <input value={seed} onChange={(e) => setSeed(e.target.value)} className={inputClass} />
         </label>
         <button
           type="submit"
           disabled={mut.isPending || !valid}
           className="rounded-md bg-status-online px-3 py-1.5 text-sm font-medium text-neutral-950 hover:brightness-110 disabled:opacity-50"
         >
-          {mut.isPending ? "Erstelle…" : "Erstellen & aktivieren"}
+          {mut.isPending ? t("create.submitting") : t("create.submit")}
         </button>
       </form>
-      {mut.isError && <p className="mt-2 text-sm text-status-error">{errMessage(mut.error)}</p>}
+      {mut.isError && (
+        <p className="mt-2 text-sm text-status-error">{errMessage(mut.error, t("actionFailed"))}</p>
+      )}
     </section>
   );
 }
@@ -193,6 +192,7 @@ function CreateWorldForm({ serverId, onDone }: { serverId: string; onDone: () =>
 // ── Welt hochladen ─────────────────────────────────────────────────────────────
 
 function UploadWorldForm({ serverId, onDone }: { serverId: string; onDone: () => void }) {
+  const { t } = useTranslation(["worlds", "common"]);
   const [name, setName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const mut = useMutation({
@@ -207,10 +207,8 @@ function UploadWorldForm({ serverId, onDone }: { serverId: string; onDone: () =>
 
   return (
     <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-      <h3 className="mb-2 text-sm font-semibold text-neutral-300">Welt hochladen (.tar.gz)</h3>
-      <p className="mb-3 text-xs text-neutral-500">
-        Ein per „Download" exportiertes Welt-Archiv unter neuem Namen importieren (max. 50 MB).
-      </p>
+      <h3 className="mb-2 text-sm font-semibold text-neutral-300">{t("upload.title")}</h3>
+      <p className="mb-3 text-xs text-neutral-500">{t("upload.description")}</p>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -220,12 +218,12 @@ function UploadWorldForm({ serverId, onDone }: { serverId: string; onDone: () =>
         className="flex flex-wrap items-end gap-3"
       >
         <label className="text-sm">
-          <span className="mb-1 block text-neutral-400">Zielname</span>
+          <span className="mb-1 block text-neutral-400">{t("upload.targetName")}</span>
           <input
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="importierte-welt"
+            placeholder={t("upload.targetNamePlaceholder")}
             className={`${inputClass} ${name && !valid ? "border-status-error" : ""}`}
           />
         </label>
@@ -241,10 +239,12 @@ function UploadWorldForm({ serverId, onDone }: { serverId: string; onDone: () =>
           disabled={mut.isPending || !valid}
           className="rounded-md bg-status-online px-3 py-1.5 text-sm font-medium text-neutral-950 hover:brightness-110 disabled:opacity-50"
         >
-          {mut.isPending ? "Lade hoch…" : "Hochladen"}
+          {mut.isPending ? t("upload.submitting") : t("common:actions.upload")}
         </button>
       </form>
-      {mut.isError && <p className="mt-2 text-sm text-status-error">{errMessage(mut.error)}</p>}
+      {mut.isError && (
+        <p className="mt-2 text-sm text-status-error">{errMessage(mut.error, t("actionFailed"))}</p>
+      )}
     </section>
   );
 }
@@ -260,6 +260,7 @@ function PregenPanel({
   activeWorld?: string;
   onChange: () => void;
 }) {
+  const { t } = useTranslation(["worlds", "common"]);
   const [radius, setRadius] = useState(1000);
   const start = useMutation({
     mutationFn: () => api.startPregen(serverId, { radius }),
@@ -269,17 +270,15 @@ function PregenPanel({
 
   return (
     <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-      <h3 className="mb-2 text-sm font-semibold text-neutral-300">
-        Pregeneration (Chunky)
-      </h3>
+      <h3 className="mb-2 text-sm font-semibold text-neutral-300">{t("pregen.title")}</h3>
       <p className="mb-3 text-xs text-neutral-500">
-        Generiert Chunks im Voraus für die aktive Welt
-        {activeWorld ? ` („${activeWorld}")` : ""}. Chunky wird bei Bedarf automatisch
-        installiert (dann Server-Neustart). Fortschritt erscheint in der Konsole.
+        {activeWorld
+          ? t("pregen.descriptionWithWorld", { world: activeWorld })
+          : t("pregen.description")}
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm">
-          <span className="mb-1 block text-neutral-400">Radius (Blöcke)</span>
+          <span className="mb-1 block text-neutral-400">{t("pregen.radiusLabel")}</span>
           <input
             type="number"
             min={100}
@@ -295,24 +294,26 @@ function PregenPanel({
           disabled={start.isPending}
           className="rounded-md bg-status-online px-3 py-1.5 text-sm font-medium text-neutral-950 hover:brightness-110 disabled:opacity-50"
         >
-          {start.isPending ? "…" : "Pregen starten"}
+          {start.isPending ? t("pregen.starting") : t("pregen.start")}
         </button>
         <button
           onClick={() => cancel.mutate()}
           disabled={cancel.isPending}
           className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
         >
-          Abbrechen
+          {t("common:actions.cancel")}
         </button>
       </div>
-      {start.data && (
-        <p className="mt-2 text-sm text-neutral-400">{start.data.message}</p>
-      )}
+      {start.data && <p className="mt-2 text-sm text-neutral-400">{start.data.message}</p>}
       {start.isError && (
-        <p className="mt-2 text-sm text-status-error">{errMessage(start.error)}</p>
+        <p className="mt-2 text-sm text-status-error">
+          {errMessage(start.error, t("actionFailed"))}
+        </p>
       )}
       {cancel.data && (
-        <p className="mt-2 text-sm text-neutral-400">Abgebrochen: {cancel.data.response}</p>
+        <p className="mt-2 text-sm text-neutral-400">
+          {t("pregen.cancelResult", { response: cancel.data.response })}
+        </p>
       )}
     </section>
   );

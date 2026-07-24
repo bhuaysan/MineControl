@@ -1,0 +1,58 @@
+{
+  "appName": "MineControl",
+  "actions": {
+    "save": "Speichern",
+    "saving": "Speichern…",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "deleting": "Löschen…",
+    "add": "Hinzufügen",
+    "edit": "Bearbeiten",
+    "create": "Erstellen",
+    "creating": "Erstellen…",
+    "confirm": "Bestätigen",
+    "close": "Schließen",
+    "back": "Zurück",
+    "retry": "Erneut versuchen",
+    "refresh": "Aktualisieren",
+    "search": "Suchen",
+    "reset": "Zurücksetzen",
+    "copy": "Kopieren",
+    "copied": "Kopiert",
+    "download": "Herunterladen",
+    "upload": "Hochladen",
+    "test": "Testen"
+  },
+  "labels": {
+    "name": "Name",
+    "status": "Status",
+    "type": "Typ",
+    "actions": "Aktionen",
+    "role": "Rolle",
+    "created": "Erstellt",
+    "yes": "Ja",
+    "no": "Nein",
+    "none": "Keine",
+    "unknown": "Unbekannt",
+    "loading": "Lade…",
+    "optional": "optional",
+    "required": "erforderlich"
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "starting": "Startet",
+    "stopping": "Stoppt",
+    "unknown": "Unbekannt",
+    "error": "Fehler"
+  },
+  "errors": {
+    "generic": "Ein Fehler ist aufgetreten",
+    "loadFailed": "Laden fehlgeschlagen",
+    "saveFailed": "Speichern fehlgeschlagen",
+    "noPermission": "Keine Berechtigung für diese Seite.",
+    "notFound": "Nicht gefunden",
+    "actionFailed": "Aktion fehlgeschlagen",
+    "uploadFailed": "Upload fehlgeschlagen"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "dashboard": "Dashboard",
+  "networks": "Netzwerke",
+  "players": "Spieler",
+  "users": "Benutzer",
+  "audit": "Audit-Log",
+  "settings": "Einstellungen",
+  "servers": "Server",
+  "logout": "Abmelden",
+  "menu": "Menü",
+  "closeMenu": "Menü schließen",
+  "language": "Sprache"
+}

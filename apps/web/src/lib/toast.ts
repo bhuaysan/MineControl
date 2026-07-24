@@ -1,3 +1,4 @@
+import i18n from "../i18n/index.js";
 import { ApiRequestError } from "./api.js";
 
 export type ToastVariant = "success" | "error" | "info";
@@ -66,10 +67,11 @@ export const toast = {
  * {@link ApiRequestError} wird die (secret-freie) Server-Meldung genutzt, sonst
  * ein generischer Fallback — nie eine rohe Stack-/Netzwerk-Fehlermeldung.
  */
-export function errorMessage(err: unknown, fallback = "Aktion fehlgeschlagen"): string {
-  if (err instanceof ApiRequestError) return err.message || fallback;
+export function errorMessage(err: unknown, fallback?: string): string {
+  const fb = fallback ?? i18n.t("common:errors.actionFailed");
+  if (err instanceof ApiRequestError) return err.message || fb;
   if (err instanceof Error && err.message) return err.message;
-  return fallback;
+  return fb;
 }
 
 /** Zeigt einen Fehler-Toast aus einem beliebigen Fehlerobjekt. */

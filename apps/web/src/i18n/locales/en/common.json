@@ -1,0 +1,58 @@
+{
+  "appName": "MineControl",
+  "actions": {
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "deleting": "Deleting…",
+    "add": "Add",
+    "edit": "Edit",
+    "create": "Create",
+    "creating": "Creating…",
+    "confirm": "Confirm",
+    "close": "Close",
+    "back": "Back",
+    "retry": "Retry",
+    "refresh": "Refresh",
+    "search": "Search",
+    "reset": "Reset",
+    "copy": "Copy",
+    "copied": "Copied",
+    "download": "Download",
+    "upload": "Upload",
+    "test": "Test"
+  },
+  "labels": {
+    "name": "Name",
+    "status": "Status",
+    "type": "Type",
+    "actions": "Actions",
+    "role": "Role",
+    "created": "Created",
+    "yes": "Yes",
+    "no": "No",
+    "none": "None",
+    "unknown": "Unknown",
+    "loading": "Loading…",
+    "optional": "optional",
+    "required": "required"
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "starting": "Starting",
+    "stopping": "Stopping",
+    "unknown": "Unknown",
+    "error": "Error"
+  },
+  "errors": {
+    "generic": "An error occurred",
+    "loadFailed": "Failed to load",
+    "saveFailed": "Failed to save",
+    "noPermission": "You do not have permission to view this page.",
+    "notFound": "Not found",
+    "actionFailed": "Action failed",
+    "uploadFailed": "Upload failed"
+  }
+}

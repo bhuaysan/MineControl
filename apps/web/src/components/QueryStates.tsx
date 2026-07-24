@@ -1,9 +1,15 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 /** Kleiner, rotierender Lade-Indikator (SVG statt Emoji für saubere Rotation). */
 export function Spinner({ className = "size-5" }: { className?: string }): React.ReactElement {
   return (
-    <svg className={`animate-spin text-neutral-400 ${className}`} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <svg
+      className={`animate-spin text-neutral-400 ${className}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+    >
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z" />
     </svg>
@@ -14,11 +20,12 @@ export function Spinner({ className = "size-5" }: { className?: string }): React
  * Einheitlicher Ladezustand für Query-gestützte Listen/Panels. Ersetzt die
  * uneinheitlichen „Lade…"-Textzeilen durch einen konsistenten Spinner + Label.
  */
-export function LoadingState({ label = "Lade…" }: { label?: string }): React.ReactElement {
+export function LoadingState({ label }: { label?: string }): React.ReactElement {
+  const { t } = useTranslation("queryStates");
   return (
     <div className="flex items-center justify-center gap-3 py-10 text-sm text-neutral-500">
       <Spinner />
-      <span>{label}</span>
+      <span>{label ?? t("common:labels.loading")}</span>
     </div>
   );
 }
@@ -28,21 +35,22 @@ export function LoadingState({ label = "Lade…" }: { label?: string }): React.R
  * `query.refetch`). Meldung bewusst kurz und ohne rohe Fehlerdetails.
  */
 export function ErrorState({
-  message = "Daten konnten nicht geladen werden.",
+  message,
   onRetry,
 }: {
   message?: string;
   onRetry?: () => void;
 }): React.ReactElement {
+  const { t } = useTranslation("queryStates");
   return (
     <div className="flex flex-col items-center gap-3 rounded-lg border border-status-error/30 bg-status-error/5 py-8 text-center">
-      <p className="text-sm text-status-error">{message}</p>
+      <p className="text-sm text-status-error">{message ?? t("errorDefault")}</p>
       {onRetry && (
         <button
           onClick={onRetry}
           className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-200 hover:bg-neutral-800"
         >
-          Erneut versuchen
+          {t("common:actions.retry")}
         </button>
       )}
     </div>

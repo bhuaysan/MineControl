@@ -1,0 +1,22 @@
+{
+  "title": "Benutzerverwaltung",
+  "roles": {
+    "VIEWER": "Viewer",
+    "MODERATOR": "Moderator",
+    "ADMIN": "Admin"
+  },
+  "username": "Benutzername",
+  "usernamePlaceholder": "z. B. moritz",
+  "password": "Passwort",
+  "passwordPlaceholder": "mind. 8 Zeichen",
+  "create": "Anlegen",
+  "table": {
+    "user": "Benutzer",
+    "created": "Angelegt"
+  },
+  "self": "(Sie)",
+  "cannotDeleteSelf": "Man kann sich nicht selbst löschen",
+  "resetPasswordPrompt": "Neues Passwort für „{{name}}“ (mind. 8 Zeichen):",
+  "deleteTitle": "Benutzer löschen",
+  "deleteMessage": "Benutzer „{{name}}“ wirklich löschen?"
+}

@@ -1,0 +1,41 @@
+{
+  "actionFailed": "Action failed",
+  "title": "Worlds",
+  "loading": "Loading worlds…",
+  "needsRunning": "– the server must be running for this.",
+  "active": "active",
+  "download": "Download",
+  "activate": "Activate",
+  "switchConfirm": {
+    "title": "Switch world",
+    "message": "Switch to world \"{{name}}\"? The server will restart to do so.",
+    "confirmLabel": "Switch"
+  },
+  "deleteConfirm": {
+    "title": "Delete world",
+    "message": "Delete world \"{{name}}\" permanently?"
+  },
+  "create": {
+    "title": "Create new world",
+    "description": "Sets the active world anew and restarts the server; the world is generated on startup.",
+    "seedLabel": "Seed (optional)",
+    "submit": "Create & activate",
+    "submitting": "Creating…"
+  },
+  "upload": {
+    "title": "Upload world (.tar.gz)",
+    "description": "Import a world archive exported via \"Download\" under a new name (max. 50 MB).",
+    "targetName": "Target name",
+    "targetNamePlaceholder": "imported-world",
+    "submitting": "Uploading…"
+  },
+  "pregen": {
+    "title": "Pregeneration (Chunky)",
+    "description": "Generates chunks in advance for the active world. Chunky is installed automatically if needed (then a server restart). Progress appears in the console.",
+    "descriptionWithWorld": "Generates chunks in advance for the active world (\"{{world}}\"). Chunky is installed automatically if needed (then a server restart). Progress appears in the console.",
+    "radiusLabel": "Radius (blocks)",
+    "start": "Start pregen",
+    "starting": "…",
+    "cancelResult": "Cancelled: {{response}}"
+  }
+}

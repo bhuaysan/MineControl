@@ -1,0 +1,25 @@
+{
+  "title": "Backups",
+  "downloadWorld": "Download world",
+  "creating": "Backing up…",
+  "createNow": "Create backup now",
+  "createFailed": "Backup failed: {{message}}",
+  "restoreFailed": "Restore failed: {{message}}",
+  "restoreSuccess": "Backup was restored.",
+  "loading": "Loading backups…",
+  "empty": "No backups yet.",
+  "trigger": {
+    "scheduled": "scheduled",
+    "manual": "manual"
+  },
+  "restore": "Restore",
+  "restoreConfirm": {
+    "title": "Restore backup",
+    "message": "The server will be stopped and restarted with the backed-up world data. Current changes will be lost.",
+    "confirmLabel": "Restore"
+  },
+  "deleteConfirm": {
+    "title": "Delete backup",
+    "message": "Delete this backup permanently?"
+  }
+}

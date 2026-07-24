@@ -1,0 +1,25 @@
+{
+  "title": "Backups",
+  "downloadWorld": "Welt herunterladen",
+  "creating": "Sichere…",
+  "createNow": "Backup jetzt erstellen",
+  "createFailed": "Backup fehlgeschlagen: {{message}}",
+  "restoreFailed": "Restore fehlgeschlagen: {{message}}",
+  "restoreSuccess": "Backup wurde zurückgespielt.",
+  "loading": "Lade Backups…",
+  "empty": "Noch keine Backups vorhanden.",
+  "trigger": {
+    "scheduled": "geplant",
+    "manual": "manuell"
+  },
+  "restore": "Zurückspielen",
+  "restoreConfirm": {
+    "title": "Backup zurückspielen",
+    "message": "Der Server wird dazu gestoppt und mit den gesicherten Weltdaten neu gestartet. Aktuelle Änderungen gehen verloren.",
+    "confirmLabel": "Zurückspielen"
+  },
+  "deleteConfirm": {
+    "title": "Backup löschen",
+    "message": "Dieses Backup endgültig löschen?"
+  }
+}

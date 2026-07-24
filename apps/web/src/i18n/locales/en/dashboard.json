@@ -1,0 +1,13 @@
+{
+  "title": "Dashboard",
+  "addServer": "+ Add server",
+  "liveDisconnected": "Live connection lost – retrying…",
+  "serversOnline": "servers online",
+  "players": "players",
+  "loadingServers": "Loading servers…",
+  "loadError": "Servers could not be loaded.",
+  "empty": {
+    "title": "No servers set up yet.",
+    "action": "Add your first server"
+  }
+}

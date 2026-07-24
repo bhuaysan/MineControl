@@ -1,0 +1,58 @@
+{
+  "title": "Networks",
+  "subtitle": "Velocity proxy with subservers as a group – players connect through a single port.",
+  "actionFailed": "Action failed",
+  "loading": "Loading networks…",
+  "loadError": "Networks could not be loaded.",
+  "empty": {
+    "title": "No network yet.",
+    "adminHint": "Create a Velocity proxy to bundle servers.",
+    "userHint": "An admin can create one."
+  },
+  "create": {
+    "toggle": "+ Create network",
+    "name": "Network name",
+    "namePlaceholder": "My network",
+    "proxyName": "Proxy server name",
+    "proxyNamePlaceholder": "(same as network name)",
+    "proxySoftware": "Proxy software",
+    "editionVelocity": "Velocity (also modded subservers)",
+    "editionBungee": "BungeeCord (Paper/Spigot only)",
+    "version": "Velocity version",
+    "versionIrrelevant": "(not relevant)",
+    "port": "Port (network entry)",
+    "proxyRam": "Proxy RAM: {{mb}} MB",
+    "submit": "Create network",
+    "submitting": "Creating…"
+  },
+  "card": {
+    "proxyPrefix": "Proxy",
+    "subservers": "Subservers ({{count}})",
+    "noSubservers": "No subservers assigned yet.",
+    "detach": "Detach",
+    "addSubserver": "+ Add subserver"
+  },
+  "delete": {
+    "title": "Delete network",
+    "message": "Delete network “{{name}}”? The proxy will be removed; the subservers remain as standalone servers."
+  },
+  "detach": {
+    "title": "Detach subserver",
+    "message": "Detach “{{name}}” from the network?",
+    "confirm": "Detach"
+  },
+  "add": {
+    "modeAttach": "Attach existing",
+    "modeCreate": "Create new",
+    "alias": "Alias (proxy server name, short/lowercase)",
+    "noEligible": "No free matching Docker server available ({{editions}}).",
+    "serverLabel": "Server",
+    "choose": "– choose –",
+    "attachHint": "Paper/Spigot servers must have been started once; modded servers are prepared automatically on attach (forwarding mod install + restarts).",
+    "edition": "Edition",
+    "version": "Version",
+    "port": "Port",
+    "ram": "RAM: {{mb}} MB",
+    "attach": "Attach"
+  }
+}

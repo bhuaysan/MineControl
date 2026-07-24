@@ -7,7 +7,9 @@ import {
 } from "@minecontrol/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthContext.js";
+import i18n from "../i18n/index.js";
 import { ApiRequestError, api } from "../lib/api.js";
 import { confirmDialog } from "../lib/confirm.js";
 
@@ -19,10 +21,11 @@ const btnGhost =
   "rounded-md border border-neutral-700 px-2 py-0.5 text-xs text-neutral-200 hover:bg-neutral-800 disabled:opacity-50";
 
 function errMessage(err: unknown): string {
-  return err instanceof ApiRequestError ? err.message : "Aktion fehlgeschlagen";
+  return err instanceof ApiRequestError ? err.message : i18n.t("common:errors.actionFailed");
 }
 
 export function LuckPermsPanel({ serverId }: { serverId: string }) {
+  const { t } = useTranslation("luckperms");
   const { can } = useAuth();
   const isAdmin = can("ADMIN");
   const qc = useQueryClient();
@@ -40,35 +43,26 @@ export function LuckPermsPanel({ serverId }: { serverId: string }) {
     onSuccess: () => void qc.invalidateQueries({ queryKey: statusKey }),
   });
 
-  if (isLoading) return <p className="text-neutral-500">Lade LuckPerms-Status…</p>;
+  if (isLoading) return <p className="text-neutral-500">{t("loadingStatus")}</p>;
   if (!status?.supported) {
-    return (
-      <p className="text-sm text-neutral-500">
-        Diese Server-Edition unterstützt LuckPerms nicht.
-      </p>
-    );
+    return <p className="text-sm text-neutral-500">{t("notSupported")}</p>;
   }
 
   if (!status.installed) {
     return (
       <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-        <h3 className="mb-2 text-sm font-semibold text-neutral-300">
-          LuckPerms nicht installiert
-        </h3>
-        <p className="mb-3 text-xs text-neutral-500">
-          LuckPerms verwaltet feingranulare In-Game-Berechtigungen (Gruppen, Prefixe,
-          Rechte). Es wird über Modrinth installiert; danach startet der Server neu.
-        </p>
+        <h3 className="mb-2 text-sm font-semibold text-neutral-300">{t("notInstalled.title")}</h3>
+        <p className="mb-3 text-xs text-neutral-500">{t("notInstalled.description")}</p>
         {isAdmin ? (
           <button
             onClick={() => installMut.mutate()}
             disabled={installMut.isPending}
             className={btnPrimary}
           >
-            {installMut.isPending ? "Installiere…" : "LuckPerms installieren"}
+            {installMut.isPending ? t("notInstalled.installing") : t("notInstalled.install")}
           </button>
         ) : (
-          <p className="text-xs text-neutral-500">Nur Admins können installieren.</p>
+          <p className="text-xs text-neutral-500">{t("notInstalled.adminOnly")}</p>
         )}
         {installMut.data && (
           <p className="mt-2 text-sm text-neutral-400">{installMut.data.message}</p>
@@ -81,12 +75,7 @@ export function LuckPermsPanel({ serverId }: { serverId: string }) {
   }
 
   if (!status.available) {
-    return (
-      <p className="text-sm text-neutral-500">
-        LuckPerms ist installiert, antwortet aber noch nicht — der Server muss laufen
-        und das Plugin geladen sein.
-      </p>
-    );
+    return <p className="text-sm text-neutral-500">{t("notResponding")}</p>;
   }
 
   return (
@@ -102,7 +91,7 @@ export function LuckPermsPanel({ serverId }: { serverId: string }) {
                 : "border-transparent text-neutral-400 hover:text-neutral-200"
             }`}
           >
-            {v === "groups" ? "Gruppen" : "Spieler"}
+            {v === "groups" ? t("tabs.groups") : t("tabs.users")}
           </button>
         ))}
       </div>
@@ -118,11 +107,16 @@ export function LuckPermsPanel({ serverId }: { serverId: string }) {
 // ── Gruppen ──────────────────────────────────────────────────────────────────
 
 function GroupsView({ serverId, isAdmin }: { serverId: string; isAdmin: boolean }) {
+  const { t } = useTranslation("luckperms");
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
   const groupsKey = ["luckperms", serverId, "groups"] as const;
 
-  const { data: groups, isLoading, error } = useQuery({
+  const {
+    data: groups,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: groupsKey,
     queryFn: () => api.lpListGroups(serverId),
   });
@@ -145,19 +139,16 @@ function GroupsView({ serverId, isAdmin }: { serverId: string; isAdmin: boolean 
   return (
     <div className="space-y-4">
       <section>
-        <h3 className="mb-2 text-sm font-semibold text-neutral-300">Gruppen</h3>
-        {isLoading && <p className="text-neutral-500">Lade Gruppen…</p>}
+        <h3 className="mb-2 text-sm font-semibold text-neutral-300">{t("groups.title")}</h3>
+        {isLoading && <p className="text-neutral-500">{t("groups.loading")}</p>}
         {error && <p className="text-status-error">{errMessage(error)}</p>}
         {groups && groups.length === 0 && (
-          <p className="text-sm text-neutral-500">Keine Gruppen.</p>
+          <p className="text-sm text-neutral-500">{t("groups.empty")}</p>
         )}
         {groups && groups.length > 0 && (
           <ul className="divide-y divide-neutral-800 rounded-lg border border-neutral-800 bg-neutral-900">
             {groups.map((g) => (
-              <li
-                key={g.name}
-                className="flex items-center justify-between gap-3 px-4 py-2.5"
-              >
+              <li key={g.name} className="flex items-center justify-between gap-3 px-4 py-2.5">
                 <button
                   onClick={() => setSelected(selected === g.name ? null : g.name)}
                   className="flex min-w-0 items-center gap-2 text-left hover:text-status-online"
@@ -165,7 +156,7 @@ function GroupsView({ serverId, isAdmin }: { serverId: string; isAdmin: boolean 
                   <span className="truncate font-medium text-neutral-100">{g.name}</span>
                   {g.weight != null && (
                     <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400">
-                      weight {g.weight}
+                      {t("groups.weight", { weight: g.weight })}
                     </span>
                   )}
                 </button>
@@ -173,15 +164,15 @@ function GroupsView({ serverId, isAdmin }: { serverId: string; isAdmin: boolean 
                   <button
                     onClick={() =>
                       void confirmDialog({
-                        title: "Gruppe löschen",
-                        message: `Gruppe „${g.name}" löschen?`,
-                        confirmLabel: "Löschen",
+                        title: t("groups.delete.title"),
+                        message: t("groups.delete.message", { name: g.name }),
+                        confirmLabel: t("common:actions.delete"),
                         danger: true,
                       }).then((ok) => ok && deleteMut.mutate(g.name))
                     }
                     disabled={deleteMut.isPending}
                     className="text-status-error hover:opacity-80"
-                    title="Löschen"
+                    title={t("common:actions.delete")}
                   >
                     ✕
                   </button>
@@ -204,16 +195,16 @@ function GroupsView({ serverId, isAdmin }: { serverId: string; isAdmin: boolean 
           className="flex flex-wrap items-end gap-2"
         >
           <label className="text-sm">
-            <span className="mb-1 block text-neutral-400">Neue Gruppe</span>
+            <span className="mb-1 block text-neutral-400">{t("groups.newLabel")}</span>
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value.toLowerCase())}
-              placeholder="z. B. moderator"
+              placeholder={t("groups.newPlaceholder")}
               className={`${inputClass} ${newName && !validName ? "border-status-error" : ""}`}
             />
           </label>
           <button type="submit" disabled={!validName || createMut.isPending} className={btnPrimary}>
-            {createMut.isPending ? "…" : "Anlegen"}
+            {createMut.isPending ? "…" : t("groups.create")}
           </button>
           {createMut.isError && (
             <p className="w-full text-sm text-status-error">{errMessage(createMut.error)}</p>
@@ -221,9 +212,7 @@ function GroupsView({ serverId, isAdmin }: { serverId: string; isAdmin: boolean 
         </form>
       )}
 
-      {selected && (
-        <GroupDetail serverId={serverId} name={selected} isAdmin={isAdmin} />
-      )}
+      {selected && <GroupDetail serverId={serverId} name={selected} isAdmin={isAdmin} />}
     </div>
   );
 }
@@ -237,6 +226,7 @@ function GroupDetail({
   name: string;
   isAdmin: boolean;
 }) {
+  const { t } = useTranslation("luckperms");
   const qc = useQueryClient();
   const key = ["luckperms", serverId, "group", name] as const;
   const { data, isLoading, error } = useQuery({
@@ -248,9 +238,9 @@ function GroupDetail({
   return (
     <section className="rounded-lg border border-status-online/30 bg-neutral-900 p-4">
       <h3 className="mb-3 text-sm font-semibold text-neutral-100">
-        Gruppe „{name}"
+        {t("groups.detailTitle", { name })}
       </h3>
-      {isLoading && <p className="text-neutral-500">Lade…</p>}
+      {isLoading && <p className="text-neutral-500">{t("common:labels.loading")}</p>}
       {error && <p className="text-status-error">{errMessage(error)}</p>}
       {data && (
         <div className="space-y-4">
@@ -258,21 +248,19 @@ function GroupDetail({
             <MetaForm serverId={serverId} name={name} detail={data} onDone={invalidate} />
           ) : (
             <dl className="grid grid-cols-3 gap-2 text-sm">
-              <MetaCell label="Weight" value={data.weight?.toString() ?? "–"} />
-              <MetaCell label="Prefix" value={data.prefix ?? "–"} />
-              <MetaCell label="Suffix" value={data.suffix ?? "–"} />
+              <MetaCell label={t("meta.weight")} value={data.weight?.toString() ?? "–"} />
+              <MetaCell label={t("meta.prefix")} value={data.prefix ?? "–"} />
+              <MetaCell label={t("meta.suffix")} value={data.suffix ?? "–"} />
             </dl>
           )}
           <PermissionList
-            title="Berechtigungen"
+            title={t("permissions.title")}
             perms={data.permissions}
             isAdmin={isAdmin}
             onSet={(node, value) =>
               api.lpSetGroupPermission(serverId, name, node, value).then(invalidate)
             }
-            onUnset={(node) =>
-              api.lpUnsetGroupPermission(serverId, name, node).then(invalidate)
-            }
+            onUnset={(node) => api.lpUnsetGroupPermission(serverId, name, node).then(invalidate)}
           />
         </div>
       )}
@@ -300,6 +288,7 @@ function MetaForm({
   detail: LpGroupDetailDto;
   onDone: () => void;
 }) {
+  const { t } = useTranslation("luckperms");
   const [prefix, setPrefix] = useState(detail.prefix ?? "");
   const [suffix, setSuffix] = useState(detail.suffix ?? "");
   const [weight, setWeight] = useState(detail.weight?.toString() ?? "");
@@ -331,15 +320,15 @@ function MetaForm({
       className="flex flex-wrap items-end gap-3"
     >
       <label className="text-sm">
-        <span className="mb-1 block text-neutral-400">Prefix</span>
+        <span className="mb-1 block text-neutral-400">{t("meta.prefix")}</span>
         <input value={prefix} onChange={(e) => setPrefix(e.target.value)} className={inputClass} />
       </label>
       <label className="text-sm">
-        <span className="mb-1 block text-neutral-400">Suffix</span>
+        <span className="mb-1 block text-neutral-400">{t("meta.suffix")}</span>
         <input value={suffix} onChange={(e) => setSuffix(e.target.value)} className={inputClass} />
       </label>
       <label className="text-sm">
-        <span className="mb-1 block text-neutral-400">Weight</span>
+        <span className="mb-1 block text-neutral-400">{t("meta.weight")}</span>
         <input
           type="number"
           min={0}
@@ -350,11 +339,9 @@ function MetaForm({
         />
       </label>
       <button type="submit" disabled={!dirty || mut.isPending} className={btnPrimary}>
-        {mut.isPending ? "…" : "Speichern"}
+        {mut.isPending ? "…" : t("common:actions.save")}
       </button>
-      {mut.isError && (
-        <p className="w-full text-sm text-status-error">{errMessage(mut.error)}</p>
-      )}
+      {mut.isError && <p className="w-full text-sm text-status-error">{errMessage(mut.error)}</p>}
     </form>
   );
 }
@@ -374,6 +361,7 @@ function PermissionList({
   onSet: (node: string, value: boolean) => Promise<unknown>;
   onUnset: (node: string) => Promise<unknown>;
 }) {
+  const { t } = useTranslation("luckperms");
   const [node, setNode] = useState("");
   const [value, setValue] = useState(true);
   const setMut = useMutation({ mutationFn: () => onSet(node.trim(), value) });
@@ -386,7 +374,7 @@ function PermissionList({
         {title}
       </h4>
       {perms.length === 0 ? (
-        <p className="text-sm text-neutral-500">Keine direkten Berechtigungen.</p>
+        <p className="text-sm text-neutral-500">{t("permissions.empty")}</p>
       ) : (
         <ul className="divide-y divide-neutral-800 rounded-md border border-neutral-800">
           {perms.map((p) => (
@@ -414,7 +402,7 @@ function PermissionList({
                   onClick={() => unsetMut.mutate(p.key)}
                   disabled={unsetMut.isPending}
                   className="shrink-0 text-status-error hover:opacity-80"
-                  title="Entfernen"
+                  title={t("permissions.remove")}
                 >
                   ✕
                 </button>
@@ -432,11 +420,11 @@ function PermissionList({
           className="mt-2 flex flex-wrap items-end gap-2"
         >
           <label className="text-sm">
-            <span className="mb-1 block text-neutral-400">Node</span>
+            <span className="mb-1 block text-neutral-400">{t("permissions.node")}</span>
             <input
               value={node}
               onChange={(e) => setNode(e.target.value)}
-              placeholder="z. B. essentials.fly"
+              placeholder={t("permissions.nodePlaceholder")}
               className={`${inputClass} w-64 ${node && !validNode ? "border-status-error" : ""}`}
             />
           </label>
@@ -445,11 +433,11 @@ function PermissionList({
             onChange={(e) => setValue(e.target.value === "true")}
             className={inputClass}
           >
-            <option value="true">true (erlauben)</option>
-            <option value="false">false (verweigern)</option>
+            <option value="true">{t("permissions.allow")}</option>
+            <option value="false">{t("permissions.deny")}</option>
           </select>
           <button type="submit" disabled={!validNode || setMut.isPending} className={btnGhost}>
-            {setMut.isPending ? "…" : "Setzen"}
+            {setMut.isPending ? "…" : t("permissions.set")}
           </button>
           {(setMut.isError || unsetMut.isError) && (
             <p className="w-full text-sm text-status-error">
@@ -465,6 +453,7 @@ function PermissionList({
 // ── Spieler ──────────────────────────────────────────────────────────────────
 
 function UsersView({ serverId, isAdmin }: { serverId: string; isAdmin: boolean }) {
+  const { t } = useTranslation("luckperms");
   const [name, setName] = useState("");
   const [lookup, setLookup] = useState("");
 
@@ -478,22 +467,19 @@ function UsersView({ serverId, isAdmin }: { serverId: string; isAdmin: boolean }
         className="flex flex-wrap items-end gap-2"
       >
         <label className="text-sm">
-          <span className="mb-1 block text-neutral-400">Spieler</span>
+          <span className="mb-1 block text-neutral-400">{t("users.playerLabel")}</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Spielername"
+            placeholder={t("users.playerPlaceholder")}
             className={inputClass}
           />
         </label>
         <button type="submit" disabled={!name.trim()} className={btnPrimary}>
-          Suchen
+          {t("common:actions.search")}
         </button>
       </form>
-      <p className="text-xs text-neutral-500">
-        Der Spieler muss LuckPerms bekannt sein (bereits verbunden oder online
-        auflösbar).
-      </p>
+      <p className="text-xs text-neutral-500">{t("users.hint")}</p>
       {lookup && <UserDetail serverId={serverId} name={lookup} isAdmin={isAdmin} />}
     </div>
   );
@@ -508,6 +494,7 @@ function UserDetail({
   name: string;
   isAdmin: boolean;
 }) {
+  const { t } = useTranslation("luckperms");
   const qc = useQueryClient();
   const key = ["luckperms", serverId, "user", name] as const;
   const { data, isLoading, error } = useQuery({
@@ -517,7 +504,7 @@ function UserDetail({
   });
   const invalidate = () => void qc.invalidateQueries({ queryKey: key });
 
-  if (isLoading) return <p className="text-neutral-500">Lade Spieler…</p>;
+  if (isLoading) return <p className="text-neutral-500">{t("users.loading")}</p>;
   if (error) return <p className="text-status-error">{errMessage(error)}</p>;
   if (!data) return null;
 
@@ -527,13 +514,14 @@ function UserDetail({
         <h3 className="text-sm font-semibold text-neutral-100">{data.name}</h3>
         {data.primaryGroup && (
           <p className="text-xs text-neutral-500">
-            Primäre Gruppe: <span className="text-neutral-300">{data.primaryGroup}</span>
+            {t("users.primaryGroupLabel")}{" "}
+            <span className="text-neutral-300">{data.primaryGroup}</span>
           </p>
         )}
       </div>
       <UserGroups serverId={serverId} user={data} isAdmin={isAdmin} onDone={invalidate} />
       <PermissionList
-        title="Direkte Berechtigungen"
+        title={t("permissions.userTitle")}
         perms={data.permissions}
         isAdmin={isAdmin}
         onSet={(node, value) =>
@@ -556,6 +544,7 @@ function UserGroups({
   isAdmin: boolean;
   onDone: () => void;
 }) {
+  const { t } = useTranslation("luckperms");
   const [group, setGroup] = useState("");
   const addMut = useMutation({
     mutationFn: () => api.lpAddUserGroup(serverId, user.name, group.trim()),
@@ -573,10 +562,10 @@ function UserGroups({
   return (
     <div>
       <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-        Gruppen
+        {t("users.groupsTitle")}
       </h4>
       {user.groups.length === 0 ? (
-        <p className="text-sm text-neutral-500">Keine Gruppen.</p>
+        <p className="text-sm text-neutral-500">{t("groups.empty")}</p>
       ) : (
         <ul className="flex flex-wrap gap-2">
           {user.groups.map((g) => (
@@ -590,7 +579,7 @@ function UserGroups({
                   onClick={() => removeMut.mutate(g)}
                   disabled={removeMut.isPending}
                   className="text-status-error hover:opacity-80"
-                  title="Entfernen"
+                  title={t("permissions.remove")}
                 >
                   ✕
                 </button>
@@ -610,11 +599,11 @@ function UserGroups({
           <input
             value={group}
             onChange={(e) => setGroup(e.target.value.toLowerCase())}
-            placeholder="Gruppe hinzufügen"
+            placeholder={t("users.addGroupPlaceholder")}
             className={`${inputClass} ${group && !valid ? "border-status-error" : ""}`}
           />
           <button type="submit" disabled={!valid || addMut.isPending} className={btnGhost}>
-            {addMut.isPending ? "…" : "Hinzufügen"}
+            {addMut.isPending ? "…" : t("common:actions.add")}
           </button>
           {(addMut.isError || removeMut.isError) && (
             <p className="w-full text-sm text-status-error">

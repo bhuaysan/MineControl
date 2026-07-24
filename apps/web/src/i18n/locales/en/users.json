@@ -1,0 +1,22 @@
+{
+  "title": "User management",
+  "roles": {
+    "VIEWER": "Viewer",
+    "MODERATOR": "Moderator",
+    "ADMIN": "Admin"
+  },
+  "username": "Username",
+  "usernamePlaceholder": "e.g. moritz",
+  "password": "Password",
+  "passwordPlaceholder": "at least 8 characters",
+  "create": "Create",
+  "table": {
+    "user": "User",
+    "created": "Created"
+  },
+  "self": "(You)",
+  "cannotDeleteSelf": "You cannot delete yourself",
+  "resetPasswordPrompt": "New password for “{{name}}” (at least 8 characters):",
+  "deleteTitle": "Delete user",
+  "deleteMessage": "Really delete user “{{name}}”?"
+}

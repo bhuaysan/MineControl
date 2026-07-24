@@ -1,26 +1,29 @@
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
 import { useServers } from "../hooks/useServers.js";
+import { LanguageSwitcher } from "./LanguageSwitcher.js";
 import { StatusDot } from "./StatusBadge.js";
 
 interface NavItem {
   to: string;
-  label: string;
+  labelKey: string;
   icon: string;
   adminOnly?: boolean;
 }
 
 const NAV: NavItem[] = [
-  { to: "/", label: "Dashboard", icon: "▣" },
-  { to: "/networks", label: "Netzwerke", icon: "🕸" },
-  { to: "/players", label: "Spieler", icon: "👥" },
-  { to: "/users", label: "Benutzer", icon: "👤", adminOnly: true },
-  { to: "/audit", label: "Audit-Log", icon: "📋", adminOnly: true },
-  { to: "/settings", label: "Einstellungen", icon: "⚙" },
+  { to: "/", labelKey: "dashboard", icon: "▣" },
+  { to: "/networks", labelKey: "networks", icon: "🕸" },
+  { to: "/players", labelKey: "players", icon: "👥" },
+  { to: "/users", labelKey: "users", icon: "👤", adminOnly: true },
+  { to: "/audit", labelKey: "audit", icon: "📋", adminOnly: true },
+  { to: "/settings", labelKey: "settings", icon: "⚙" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const { t } = useTranslation("nav");
   const { user, logout, can } = useAuth();
   const { data: servers } = useServers();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -54,14 +57,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               onClick={() => setMobileOpen(false)}
             >
               <span className="w-5 text-center">{item.icon}</span>
-              {item.label}
+              {t(item.labelKey)}
             </NavLink>
           ))}
 
           {servers && servers.length > 0 && (
             <div className="pt-4">
               <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wide text-neutral-600">
-                Server
+                {t("servers")}
               </p>
               {servers.map((s) => (
                 <NavLink
@@ -78,16 +81,16 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         </nav>
 
-        <div className="border-t border-neutral-800 p-3 text-sm">
-          <div className="mb-2 px-1 text-neutral-400">
-            🌙 {user?.username}{" "}
-            <span className="text-xs text-neutral-600">({user?.role})</span>
+        <div className="space-y-2 border-t border-neutral-800 p-3 text-sm">
+          <div className="px-1 text-neutral-400">
+            🌙 {user?.username} <span className="text-xs text-neutral-600">({user?.role})</span>
           </div>
+          <LanguageSwitcher />
           <button
             onClick={() => void logout()}
             className="w-full rounded-md px-3 py-1.5 text-left text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200"
           >
-            Abmelden
+            {t("logout")}
           </button>
         </div>
       </aside>
@@ -97,7 +100,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button
             onClick={() => setMobileOpen((v) => !v)}
             className="rounded-md p-1.5 text-neutral-300 hover:bg-neutral-800"
-            aria-label="Menü"
+            aria-label={t("menu")}
           >
             ☰
           </button>
@@ -110,7 +113,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <button
           className="fixed inset-0 z-10 bg-black/50 md:hidden"
           onClick={() => setMobileOpen(false)}
-          aria-label="Menü schließen"
+          aria-label={t("closeMenu")}
         />
       )}
     </div>

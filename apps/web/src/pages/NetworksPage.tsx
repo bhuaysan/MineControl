@@ -7,6 +7,7 @@ import {
 } from "@minecontrol/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { StatusBadge, StatusDot } from "../components/StatusBadge.js";
 import { useAuth } from "../auth/AuthContext.js";
@@ -17,11 +18,12 @@ import { confirmDialog } from "../lib/confirm.js";
 const inputClass =
   "rounded-md border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-sm outline-none focus:border-status-online";
 
-function errMessage(err: unknown): string {
-  return err instanceof ApiRequestError ? err.message : "Aktion fehlgeschlagen";
+function errMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiRequestError ? err.message : fallback;
 }
 
 export function NetworksPage() {
+  const { t } = useTranslation("networks");
   const { can } = useAuth();
   const isAdmin = can("ADMIN");
   const {
@@ -39,34 +41,27 @@ export function NetworksPage() {
     <div className="mx-auto max-w-4xl">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Netzwerke</h1>
-          <p className="text-sm text-neutral-500">
-            Velocity-Proxy mit Subservern als Gruppe – Spieler verbinden sich über einen Port.
-          </p>
+          <h1 className="text-2xl font-bold">{t("title")}</h1>
+          <p className="text-sm text-neutral-500">{t("subtitle")}</p>
         </div>
         {isAdmin && (
           <button
             onClick={() => setShowCreate((v) => !v)}
             className="rounded-md bg-status-online px-3 py-1.5 text-sm font-medium text-neutral-950 hover:brightness-110"
           >
-            {showCreate ? "Abbrechen" : "+ Netzwerk erstellen"}
+            {showCreate ? t("common:actions.cancel") : t("create.toggle")}
           </button>
         )}
       </div>
 
       {showCreate && isAdmin && <CreateNetworkForm onDone={() => setShowCreate(false)} />}
 
-      {isLoading && <p className="text-neutral-500">Lade Netzwerke…</p>}
-      {error && (
-        <p className="text-status-error">Netzwerke konnten nicht geladen werden.</p>
-      )}
+      {isLoading && <p className="text-neutral-500">{t("loading")}</p>}
+      {error && <p className="text-status-error">{t("loadError")}</p>}
 
       {networks && networks.length === 0 && !showCreate && (
         <div className="rounded-lg border border-dashed border-neutral-800 p-10 text-center text-neutral-500">
-          Noch kein Netzwerk.{" "}
-          {isAdmin
-            ? "Erstelle einen Velocity-Proxy, um Server zu bündeln."
-            : "Ein Admin kann eines anlegen."}
+          {t("empty.title")} {isAdmin ? t("empty.adminHint") : t("empty.userHint")}
         </div>
       )}
 
@@ -82,6 +77,7 @@ export function NetworksPage() {
 // ── Netzwerk erstellen ─────────────────────────────────────────────────────────
 
 function CreateNetworkForm({ onDone }: { onDone: () => void }) {
+  const { t } = useTranslation("networks");
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [proxyName, setProxyName] = useState("");
@@ -118,26 +114,26 @@ function CreateNetworkForm({ onDone }: { onDone: () => void }) {
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-sm">
-          <span className="mb-1 block text-neutral-400">Netzwerkname</span>
+          <span className="mb-1 block text-neutral-400">{t("create.name")}</span>
           <input
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Mein Netzwerk"
+            placeholder={t("create.namePlaceholder")}
             className={`w-full ${inputClass}`}
           />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-neutral-400">Proxy-Servername</span>
+          <span className="mb-1 block text-neutral-400">{t("create.proxyName")}</span>
           <input
             value={proxyName}
             onChange={(e) => setProxyName(e.target.value)}
-            placeholder="(wie Netzwerkname)"
+            placeholder={t("create.proxyNamePlaceholder")}
             className={`w-full ${inputClass}`}
           />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-neutral-400">Proxy-Software</span>
+          <span className="mb-1 block text-neutral-400">{t("create.proxySoftware")}</span>
           <select
             value={proxyEdition}
             onChange={(e) => setProxyEdition(e.target.value as NetworkProxyEdition)}
@@ -145,14 +141,15 @@ function CreateNetworkForm({ onDone }: { onDone: () => void }) {
           >
             {NETWORK_PROXY_EDITIONS.map((ed) => (
               <option key={ed} value={ed}>
-                {ed === "VELOCITY" ? "Velocity (auch modded Subserver)" : "BungeeCord (nur Paper/Spigot)"}
+                {ed === "VELOCITY" ? t("create.editionVelocity") : t("create.editionBungee")}
               </option>
             ))}
           </select>
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-neutral-400">
-            Velocity-Version{isBungee ? " (nicht relevant)" : ""}
+            {t("create.version")}
+            {isBungee ? ` ${t("create.versionIrrelevant")}` : ""}
           </span>
           <input
             value={version}
@@ -162,7 +159,7 @@ function CreateNetworkForm({ onDone }: { onDone: () => void }) {
           />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-neutral-400">Port (Netzwerk-Eingang)</span>
+          <span className="mb-1 block text-neutral-400">{t("create.port")}</span>
           <input
             type="number"
             required
@@ -174,7 +171,9 @@ function CreateNetworkForm({ onDone }: { onDone: () => void }) {
           />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-neutral-400">Proxy-RAM: {memoryMb} MB</span>
+          <span className="mb-1 block text-neutral-400">
+            {t("create.proxyRam", { mb: memoryMb })}
+          </span>
           <input
             type="range"
             min={256}
@@ -187,7 +186,7 @@ function CreateNetworkForm({ onDone }: { onDone: () => void }) {
         </label>
       </div>
       {mutation.isError && (
-        <p className="text-sm text-status-error">{errMessage(mutation.error)}</p>
+        <p className="text-sm text-status-error">{errMessage(mutation.error, t("actionFailed"))}</p>
       )}
       <div className="flex gap-2">
         <button
@@ -195,7 +194,7 @@ function CreateNetworkForm({ onDone }: { onDone: () => void }) {
           disabled={mutation.isPending}
           className="rounded-md bg-status-online px-4 py-1.5 text-sm font-medium text-neutral-950 hover:brightness-110 disabled:opacity-50"
         >
-          {mutation.isPending ? "Erstelle…" : "Netzwerk erstellen"}
+          {mutation.isPending ? t("create.submitting") : t("create.submit")}
         </button>
       </div>
     </form>
@@ -205,6 +204,7 @@ function CreateNetworkForm({ onDone }: { onDone: () => void }) {
 // ── Netzwerk-Karte ───────────────────────────────────────────────────────────
 
 function NetworkCard({ network, isAdmin }: { network: NetworkDto; isAdmin: boolean }) {
+  const { t } = useTranslation("networks");
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
   const invalidate = () => {
@@ -236,7 +236,8 @@ function NetworkCard({ network, isAdmin }: { network: NetworkDto; isAdmin: boole
             to={`/servers/${network.proxy.serverId}`}
             className="text-sm text-neutral-400 hover:text-neutral-200"
           >
-            Proxy: {network.proxy.name} · {network.proxy.host}:{network.proxy.port}
+            {t("card.proxyPrefix")}: {network.proxy.name} · {network.proxy.host}:
+            {network.proxy.port}
           </Link>
         </div>
         <div className="flex items-center gap-3">
@@ -245,16 +246,16 @@ function NetworkCard({ network, isAdmin }: { network: NetworkDto; isAdmin: boole
             <button
               onClick={() =>
                 void confirmDialog({
-                  title: "Netzwerk löschen",
-                  message: `Netzwerk „${network.name}" löschen? Der Proxy wird entfernt, die Subserver bleiben als eigenständige Server erhalten.`,
-                  confirmLabel: "Löschen",
+                  title: t("delete.title"),
+                  message: t("delete.message", { name: network.name }),
+                  confirmLabel: t("common:actions.delete"),
                   danger: true,
                 }).then((ok) => ok && remove.mutate())
               }
               disabled={remove.isPending}
               className="rounded-md border border-neutral-700 px-2.5 py-1 text-sm text-status-error hover:bg-neutral-800 disabled:opacity-50"
             >
-              Löschen
+              {t("common:actions.delete")}
             </button>
           )}
         </div>
@@ -262,19 +263,14 @@ function NetworkCard({ network, isAdmin }: { network: NetworkDto; isAdmin: boole
 
       <div className="p-4">
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-600">
-          Subserver ({network.members.length})
+          {t("card.subservers", { count: network.members.length })}
         </p>
         {network.members.length === 0 ? (
-          <p className="text-sm text-neutral-500">
-            Noch keine Subserver zugeordnet.
-          </p>
+          <p className="text-sm text-neutral-500">{t("card.noSubservers")}</p>
         ) : (
           <ul className="divide-y divide-neutral-800 rounded-md border border-neutral-800">
             {network.members.map((m) => (
-              <li
-                key={m.serverId}
-                className="flex items-center justify-between gap-3 px-3 py-2"
-              >
+              <li key={m.serverId} className="flex items-center justify-between gap-3 px-3 py-2">
                 <span className="flex min-w-0 items-center gap-2">
                   <StatusDot state={m.state} />
                   <code className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-status-online">
@@ -292,15 +288,15 @@ function NetworkCard({ network, isAdmin }: { network: NetworkDto; isAdmin: boole
                   <button
                     onClick={() =>
                       void confirmDialog({
-                        title: "Subserver lösen",
-                        message: `„${m.name}" aus dem Netzwerk lösen?`,
-                        confirmLabel: "Lösen",
+                        title: t("detach.title"),
+                        message: t("detach.message", { name: m.name }),
+                        confirmLabel: t("detach.confirm"),
                       }).then((ok) => ok && detach.mutate(m.serverId))
                     }
                     disabled={detach.isPending}
                     className="shrink-0 rounded-md border border-neutral-700 px-2 py-0.5 text-xs text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
                   >
-                    Lösen
+                    {t("card.detach")}
                   </button>
                 )}
               </li>
@@ -308,10 +304,14 @@ function NetworkCard({ network, isAdmin }: { network: NetworkDto; isAdmin: boole
           </ul>
         )}
         {detach.isError && (
-          <p className="mt-2 text-sm text-status-error">{errMessage(detach.error)}</p>
+          <p className="mt-2 text-sm text-status-error">
+            {errMessage(detach.error, t("actionFailed"))}
+          </p>
         )}
         {remove.isError && (
-          <p className="mt-2 text-sm text-status-error">{errMessage(remove.error)}</p>
+          <p className="mt-2 text-sm text-status-error">
+            {errMessage(remove.error, t("actionFailed"))}
+          </p>
         )}
 
         {isAdmin && (
@@ -329,7 +329,7 @@ function NetworkCard({ network, isAdmin }: { network: NetworkDto; isAdmin: boole
                 onClick={() => setAdding(true)}
                 className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
               >
-                + Subserver hinzufügen
+                {t("card.addSubserver")}
               </button>
             )}
           </div>
@@ -341,13 +341,8 @@ function NetworkCard({ network, isAdmin }: { network: NetworkDto; isAdmin: boole
 
 // ── Subserver hinzufügen (anhängen oder neu) ───────────────────────────────────
 
-function AddSubserverForm({
-  network,
-  onDone,
-}: {
-  network: NetworkDto;
-  onDone: () => void;
-}) {
+function AddSubserverForm({ network, onDone }: { network: NetworkDto; onDone: () => void }) {
+  const { t } = useTranslation("networks");
   const qc = useQueryClient();
   const { data: servers } = useServers();
   const { data: networks } = useQuery({ queryKey: ["networks"], queryFn: api.listNetworks });
@@ -428,58 +423,50 @@ function AddSubserverForm({
                 : "text-neutral-400 hover:bg-neutral-800/60"
             }`}
           >
-            {m === "attach" ? "Bestehenden anhängen" : "Neu erstellen"}
+            {m === "attach" ? t("add.modeAttach") : t("add.modeCreate")}
           </button>
         ))}
       </div>
 
       <label className="block text-sm">
-        <span className="mb-1 block text-neutral-400">
-          Alias (Proxy-Servername, klein/kurz)
-        </span>
+        <span className="mb-1 block text-neutral-400">{t("add.alias")}</span>
         <input
           required
           value={alias}
           onChange={(e) => setAlias(e.target.value)}
           placeholder="lobby"
-          className={`w-full ${inputClass} ${
-            alias && !aliasValid ? "border-status-error" : ""
-          }`}
+          className={`w-full ${inputClass} ${alias && !aliasValid ? "border-status-error" : ""}`}
         />
       </label>
 
       {mode === "attach" ? (
         eligible.length === 0 ? (
           <p className="text-sm text-neutral-500">
-            Kein freier passender Docker-Server verfügbar ({allowedEditions.join("/")}).
+            {t("add.noEligible", { editions: allowedEditions.join("/") })}
           </p>
         ) : (
           <label className="block text-sm">
-            <span className="mb-1 block text-neutral-400">Server</span>
+            <span className="mb-1 block text-neutral-400">{t("add.serverLabel")}</span>
             <select
               required
               value={serverId}
               onChange={(e) => setServerId(e.target.value)}
               className={`w-full ${inputClass}`}
             >
-              <option value="">– wählen –</option>
+              <option value="">{t("add.choose")}</option>
               {eligible.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name} ({s.edition})
                 </option>
               ))}
             </select>
-            <span className="mt-1 block text-xs text-neutral-600">
-              Paper/Spigot-Server müssen einmal gestartet worden sein; modded Server
-              werden beim Anhängen automatisch vorbereitet (Forwarding-Mod-Install +
-              Neustarts).
-            </span>
+            <span className="mt-1 block text-xs text-neutral-600">{t("add.attachHint")}</span>
           </label>
         )
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm">
-            <span className="mb-1 block text-neutral-400">Name</span>
+            <span className="mb-1 block text-neutral-400">{t("common:labels.name")}</span>
             <input
               required
               value={name}
@@ -488,7 +475,7 @@ function AddSubserverForm({
             />
           </label>
           <label className="text-sm">
-            <span className="mb-1 block text-neutral-400">Edition</span>
+            <span className="mb-1 block text-neutral-400">{t("add.edition")}</span>
             <select
               value={edition}
               onChange={(e) =>
@@ -504,7 +491,7 @@ function AddSubserverForm({
             </select>
           </label>
           <label className="text-sm">
-            <span className="mb-1 block text-neutral-400">Version</span>
+            <span className="mb-1 block text-neutral-400">{t("add.version")}</span>
             <input
               value={version}
               onChange={(e) => setVersion(e.target.value)}
@@ -512,7 +499,7 @@ function AddSubserverForm({
             />
           </label>
           <label className="text-sm">
-            <span className="mb-1 block text-neutral-400">Port</span>
+            <span className="mb-1 block text-neutral-400">{t("add.port")}</span>
             <input
               type="number"
               required
@@ -524,7 +511,7 @@ function AddSubserverForm({
             />
           </label>
           <label className="text-sm sm:col-span-2">
-            <span className="mb-1 block text-neutral-400">RAM: {memoryMb} MB</span>
+            <span className="mb-1 block text-neutral-400">{t("add.ram", { mb: memoryMb })}</span>
             <input
               type="range"
               min={512}
@@ -539,7 +526,7 @@ function AddSubserverForm({
       )}
 
       {mutation.isError && (
-        <p className="text-sm text-status-error">{errMessage(mutation.error)}</p>
+        <p className="text-sm text-status-error">{errMessage(mutation.error, t("actionFailed"))}</p>
       )}
       <div className="flex gap-2">
         <button
@@ -547,14 +534,18 @@ function AddSubserverForm({
           disabled={mutation.isPending || !aliasValid}
           className="rounded-md bg-status-online px-3 py-1.5 text-sm font-medium text-neutral-950 hover:brightness-110 disabled:opacity-50"
         >
-          {mutation.isPending ? "…" : mode === "attach" ? "Anhängen" : "Erstellen"}
+          {mutation.isPending
+            ? "…"
+            : mode === "attach"
+              ? t("add.attach")
+              : t("common:actions.create")}
         </button>
         <button
           type="button"
           onClick={onDone}
           className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
         >
-          Abbrechen
+          {t("common:actions.cancel")}
         </button>
       </div>
     </form>

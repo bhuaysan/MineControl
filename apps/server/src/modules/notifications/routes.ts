@@ -34,10 +34,7 @@ const updateSchema = z.object({
   emailSmtpSecure: z.boolean().optional(),
   emailSmtpUser: z.string().optional(),
   emailSmtpPassword: z.string().min(1).optional(),
-  emailFrom: z
-    .string()
-    .refine(isValidMailbox, "Ungültige Absenderadresse")
-    .optional(),
+  emailFrom: z.string().refine(isValidMailbox, "Ungültige Absenderadresse").optional(),
   emailTo: z
     .string()
     .refine(
@@ -48,6 +45,7 @@ const updateSchema = z.object({
   notifyServerDown: z.boolean().optional(),
   notifyBackupFailed: z.boolean().optional(),
   notifyTaskFailed: z.boolean().optional(),
+  notifyLocale: z.enum(["de", "en"]).optional(),
 });
 
 const testSchema = z.object({

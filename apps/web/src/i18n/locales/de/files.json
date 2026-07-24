@@ -1,0 +1,19 @@
+{
+  "newFolderPrompt": "Name des neuen Ordners:",
+  "folder": "Ordner",
+  "upload": "Upload",
+  "uploading": "Lade hoch…",
+  "uploadFailed": "Upload fehlgeschlagen: {{message}}",
+  "notRunning": "Der Server muss laufen, um Dateien zu durchsuchen.",
+  "loadDirFailed": "Verzeichnis konnte nicht geladen werden.",
+  "emptyDir": "Leeres Verzeichnis.",
+  "deleteConfirm": {
+    "title": "Löschen",
+    "message": "„{{name}}\" löschen?"
+  },
+  "editor": {
+    "loading": "Lade Datei…",
+    "loadFailed": "Datei konnte nicht geladen werden.",
+    "saveFailed": "Speichern fehlgeschlagen."
+  }
+}

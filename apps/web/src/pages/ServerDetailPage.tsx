@@ -1,6 +1,7 @@
 import type { ServerDto } from "@minecontrol/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
 import { BackupsPanel } from "../components/BackupsPanel.js";
@@ -51,6 +52,7 @@ export function ServerDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { can } = useAuth();
+  const { t } = useTranslation("serverDetail");
 
   const { data: server, isLoading } = useQuery<ServerDto>({
     queryKey: ["server", id],
@@ -60,8 +62,7 @@ export function ServerDetailPage() {
   });
 
   const canRcon = server?.capabilities.includes("RCON") ?? false;
-  const hasConsole =
-    (server?.capabilities.includes("CONSOLE") ?? false) && can("MODERATOR");
+  const hasConsole = (server?.capabilities.includes("CONSOLE") ?? false) && can("MODERATOR");
   const hasMetrics = server?.capabilities.includes("METRICS") ?? false;
   const hasLifecycle =
     (server?.capabilities.includes("LIFECYCLE_START") ?? false) ||
@@ -83,9 +84,11 @@ export function ServerDetailPage() {
   const [command, setCommand] = useState("");
   const [output, setOutput] = useState<string[]>([]);
 
-  const running =
-    server?.status.state === "ONLINE" || server?.status.state === "STARTING";
-  const metrics = useServerMetrics(id ?? "", Boolean(id) && hasMetrics && tab === "overview" && running);
+  const running = server?.status.state === "ONLINE" || server?.status.state === "STARTING";
+  const metrics = useServerMetrics(
+    id ?? "",
+    Boolean(id) && hasMetrics && tab === "overview" && running,
+  );
 
   const commandMutation = useMutation({
     // Fehler werden hier bewusst inline in die Ausgabe geschrieben — der globale
@@ -93,18 +96,22 @@ export function ServerDetailPage() {
     meta: { suppressErrorToast: true },
     mutationFn: (cmd: string) => api.sendCommand(id!, cmd),
     onSuccess: (res, cmd) => {
-      setOutput((prev) => [...prev, `> ${cmd}`, res.response || "(keine Antwort)"]);
+      setOutput((prev) => [...prev, `> ${cmd}`, res.response || t("command.noResponse")]);
       setCommand("");
     },
     onError: (err, cmd) => {
-      setOutput((prev) => [...prev, `> ${cmd}`, `Fehler: ${(err as Error).message}`]);
+      setOutput((prev) => [
+        ...prev,
+        `> ${cmd}`,
+        t("command.error", { message: (err as Error).message }),
+      ]);
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (keepWorld: boolean) => api.deleteServer(id!, keepWorld),
     onSuccess: () => {
-      toast.success("Server entfernt");
+      toast.success(t("delete.success"));
       void queryClient.invalidateQueries({ queryKey: serversQueryKey });
       navigate("/");
     },
@@ -117,9 +124,9 @@ export function ServerDetailPage() {
 
   const onDelete = async () => {
     const confirmed = await confirmDialog({
-      title: "Server entfernen",
-      message: `Server „${server?.name}" wirklich entfernen? Diese Aktion kann nicht rückgängig gemacht werden.`,
-      confirmLabel: "Entfernen",
+      title: t("delete.confirmTitle"),
+      message: t("delete.confirmMessage", { name: server?.name }),
+      confirmLabel: t("delete.confirmLabel"),
       danger: true,
     });
     if (!confirmed) return;
@@ -128,40 +135,43 @@ export function ServerDetailPage() {
     let keepWorld = false;
     if (server?.type === "DOCKER") {
       keepWorld = await confirmDialog({
-        title: "Weltdaten behalten?",
-        message: "Sollen die Weltdaten (Docker-Volume) erhalten bleiben?",
-        confirmLabel: "Behalten",
-        cancelLabel: "Endgültig löschen",
+        title: t("delete.keepWorldTitle"),
+        message: t("delete.keepWorldMessage"),
+        confirmLabel: t("delete.keepWorldConfirm"),
+        cancelLabel: t("delete.keepWorldCancel"),
       });
     }
     deleteMutation.mutate(keepWorld);
   };
 
-  if (isLoading) return <LoadingState label="Lade Server…" />;
-  if (!server) return <ErrorState message="Server nicht gefunden." />;
+  if (isLoading) return <LoadingState label={t("loading")} />;
+  if (!server) return <ErrorState message={t("notFound")} />;
 
   const players = playersQuery.data ?? [];
 
-  const tabs: [Tab, string][] = [["overview", "Übersicht"]];
-  if (hasConsole) tabs.push(["console", "Konsole"]);
-  tabs.push(["players", `Spieler (${server.status.players.online})`]);
-  if (isDocker && can("MODERATOR")) tabs.push(["files", "Dateien"]);
+  const tabs: [Tab, string][] = [["overview", t("tabs.overview")]];
+  if (hasConsole) tabs.push(["console", t("tabs.console")]);
+  tabs.push(["players", t("tabs.players", { n: server.status.players.online })]);
+  if (isDocker && can("MODERATOR")) tabs.push(["files", t("tabs.files")]);
   if (isModdable) {
-    tabs.push(["mods", ["PAPER", "SPIGOT", "VELOCITY", "BUNGEECORD"].includes(server.edition) ? "Plugins" : "Mods"]);
+    tabs.push([
+      "mods",
+      ["PAPER", "SPIGOT", "VELOCITY", "BUNGEECORD"].includes(server.edition)
+        ? t("tabs.plugins")
+        : t("tabs.mods"),
+    ]);
   }
   const isWorldServer =
-    isDocker &&
-    !["VELOCITY", "BUNGEECORD"].includes(server.edition) &&
-    can("MODERATOR");
-  if (isWorldServer) tabs.push(["worlds", "Welten"]);
+    isDocker && !["VELOCITY", "BUNGEECORD"].includes(server.edition) && can("MODERATOR");
+  if (isWorldServer) tabs.push(["worlds", t("tabs.worlds")]);
   const isLuckPerms =
     isDocker &&
     ["PAPER", "SPIGOT", "FABRIC", "FORGE", "NEOFORGE"].includes(server.edition) &&
     can("MODERATOR");
-  if (isLuckPerms) tabs.push(["luckperms", "Rechte"]);
-  if (isDocker) tabs.push(["backups", "Backups"]);
-  if (showTasks) tabs.push(["tasks", "Zeitpläne"]);
-  if (hasSettings) tabs.push(["settings", "Einstellungen"]);
+  if (isLuckPerms) tabs.push(["luckperms", t("tabs.luckperms")]);
+  if (isDocker) tabs.push(["backups", t("tabs.backups")]);
+  if (showTasks) tabs.push(["tasks", t("tabs.tasks")]);
+  if (hasSettings) tabs.push(["settings", t("tabs.settings")]);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -173,7 +183,8 @@ export function ServerDetailPage() {
           </div>
           <p className="text-sm text-neutral-500">
             {server.status.version ?? server.edition} ·{" "}
-            {server.type === "DOCKER" ? "Docker" : "Extern"} · {server.host}:{server.port}
+            {server.type === "DOCKER" ? t("type.docker") : t("type.external")} · {server.host}:
+            {server.port}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -184,7 +195,7 @@ export function ServerDetailPage() {
               disabled={deleteMutation.isPending}
               className="rounded-md border border-status-error/40 px-3 py-1.5 text-sm text-status-error hover:bg-status-error/10 disabled:opacity-50"
             >
-              {deleteMutation.isPending ? "Entferne…" : "Entfernen"}
+              {deleteMutation.isPending ? t("delete.deleting") : t("delete.button")}
             </button>
           )}
         </div>
@@ -192,13 +203,13 @@ export function ServerDetailPage() {
 
       {deleteMutation.isError && (
         <p className="mb-4 rounded-md border border-status-error/40 bg-status-error/10 px-3 py-2 text-sm text-status-error">
-          Entfernen fehlgeschlagen: {(deleteMutation.error as Error).message}
+          {t("delete.error", { message: (deleteMutation.error as Error).message })}
         </p>
       )}
 
       {server.provisionError && (
         <p className="mb-4 rounded-md border border-status-error/40 bg-status-error/10 px-3 py-2 text-sm text-status-error">
-          Einrichtung fehlgeschlagen: {server.provisionError}
+          {t("provisionError", { error: server.provisionError })}
         </p>
       )}
 
@@ -221,43 +232,41 @@ export function ServerDetailPage() {
       {tab === "overview" && (
         <div className="grid gap-4 md:grid-cols-2">
           <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="mb-3 font-semibold">Details</h2>
+            <h2 className="mb-3 font-semibold">{t("details.heading")}</h2>
             <dl className="space-y-1.5 text-sm">
               <div className="flex justify-between">
                 <dt className="text-neutral-500">MOTD</dt>
                 <dd className="max-w-[60%] truncate">{server.status.motd || "–"}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-neutral-500">Version</dt>
+                <dt className="text-neutral-500">{t("details.version")}</dt>
                 <dd>{server.status.version ?? server.edition}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-neutral-500">Spieler</dt>
+                <dt className="text-neutral-500">{t("details.players")}</dt>
                 <dd>
                   {server.status.players.online}
                   {server.status.players.max ? ` / ${server.status.players.max}` : ""}
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-neutral-500">Latenz</dt>
-                <dd>
-                  {server.status.latencyMs != null ? `${server.status.latencyMs} ms` : "–"}
-                </dd>
+                <dt className="text-neutral-500">{t("details.latency")}</dt>
+                <dd>{server.status.latencyMs != null ? `${server.status.latencyMs} ms` : "–"}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-neutral-500">RCON</dt>
-                <dd>{canRcon ? "verbunden" : "nicht konfiguriert"}</dd>
+                <dt className="text-neutral-500">{t("details.rcon")}</dt>
+                <dd>{canRcon ? t("details.rconConnected") : t("details.rconNotConfigured")}</dd>
               </div>
             </dl>
           </section>
 
           {hasMetrics && (
             <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-              <h2 className="mb-3 font-semibold">Metriken</h2>
+              <h2 className="mb-3 font-semibold">{t("metrics.heading")}</h2>
               {!running ? (
-                <p className="text-sm text-neutral-500">Server offline – keine Metriken.</p>
+                <p className="text-sm text-neutral-500">{t("metrics.offline")}</p>
               ) : !metrics ? (
-                <p className="text-sm text-neutral-500">Warte auf Daten…</p>
+                <p className="text-sm text-neutral-500">{t("metrics.waiting")}</p>
               ) : (
                 <div className="space-y-3">
                   <Metric
@@ -296,13 +305,13 @@ export function ServerDetailPage() {
           )}
 
           <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 md:col-span-2">
-            <h2 className="mb-3 font-semibold">Verlauf</h2>
+            <h2 className="mb-3 font-semibold">{t("history")}</h2>
             <MetricHistoryChart serverId={server.id} />
           </section>
 
           {can("MODERATOR") && canRcon && !hasConsole && (
             <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-              <h2 className="mb-3 font-semibold">Befehl senden (RCON)</h2>
+              <h2 className="mb-3 font-semibold">{t("command.heading")}</h2>
               {output.length > 0 && (
                 <pre className="mb-3 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-md bg-neutral-950 p-3 font-mono text-xs text-neutral-300">
                   {output.join("\n")}
@@ -321,7 +330,7 @@ export function ServerDetailPage() {
                   disabled={commandMutation.isPending}
                   className="rounded-md bg-status-online px-4 font-medium text-neutral-950 hover:opacity-90 disabled:opacity-50"
                 >
-                  Senden
+                  {t("command.send")}
                 </button>
               </form>
             </section>
@@ -333,13 +342,9 @@ export function ServerDetailPage() {
         <ConsoleView serverId={server.id} canInput={can("MODERATOR") && canRcon} />
       )}
 
-      {tab === "files" && isDocker && can("MODERATOR") && (
-        <FilesPanel serverId={server.id} />
-      )}
+      {tab === "files" && isDocker && can("MODERATOR") && <FilesPanel serverId={server.id} />}
 
-      {tab === "mods" && isModdable && (
-        <ModsPanel serverId={server.id} edition={server.edition} />
-      )}
+      {tab === "mods" && isModdable && <ModsPanel serverId={server.id} edition={server.edition} />}
 
       {tab === "worlds" && isWorldServer && <WorldsPanel serverId={server.id} />}
 
@@ -359,11 +364,12 @@ export function ServerDetailPage() {
       {tab === "players" && (
         <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
           <h2 className="mb-3 font-semibold">
-            Online ({server.status.players.online}
-            {server.status.players.max ? `/${server.status.players.max}` : ""})
+            {t("onlinePlayers.heading", {
+              label: `${server.status.players.online}${server.status.players.max ? `/${server.status.players.max}` : ""}`,
+            })}
           </h2>
           {players.length === 0 ? (
-            <p className="text-sm text-neutral-500">Niemand online.</p>
+            <p className="text-sm text-neutral-500">{t("onlinePlayers.empty")}</p>
           ) : (
             <ul className="divide-y divide-neutral-800">
               {players.map((p) => (
@@ -379,9 +385,7 @@ export function ServerDetailPage() {
                     {p.name}
                   </Link>
                   <div className="flex items-center gap-3">
-                    <span className="text-neutral-500">
-                      {formatDuration(p.sessionSeconds)}
-                    </span>
+                    <span className="text-neutral-500">{formatDuration(p.sessionSeconds)}</span>
                     {can("MODERATOR") && canRcon && (
                       <PlayerActionMenu
                         serverId={server.id}
@@ -401,15 +405,7 @@ export function ServerDetailPage() {
 }
 
 /** Beschriftete Fortschrittsleiste für eine Metrik. */
-function Metric({
-  label,
-  value,
-  percent,
-}: {
-  label: string;
-  value: string;
-  percent: number;
-}) {
+function Metric({ label, value, percent }: { label: string; value: string; percent: number }) {
   return (
     <div>
       <div className="mb-1 flex justify-between text-sm">

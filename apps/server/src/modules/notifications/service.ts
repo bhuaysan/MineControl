@@ -1,9 +1,14 @@
 import type { Prisma } from "@prisma/client";
-import type { NotificationChannel, NotificationSettingsDto } from "@minecontrol/shared";
+import type {
+  NotificationChannel,
+  NotificationLocale,
+  NotificationSettingsDto,
+} from "@minecontrol/shared";
 import nodemailer from "nodemailer";
 import { decryptSecret, encryptSecret } from "../../crypto.js";
 import { prisma } from "../../db.js";
 import { logger } from "../../logger.js";
+import { notificationMessages } from "./messages.js";
 
 /** Client oder (innerhalb einer Transaktion) der Transaktions-Client. */
 type Db = Prisma.TransactionClient;
@@ -21,7 +26,13 @@ const KEYS = {
   serverDown: "notify.serverDown",
   backupFailed: "notify.backupFailed",
   taskFailed: "notify.taskFailed",
+  locale: "notify.locale",
 } as const;
+
+/** Liest die konfigurierte Benachrichtigungssprache; Standard Deutsch. */
+async function readLocale(db: Db = prisma): Promise<NotificationLocale> {
+  return (await readSetting(KEYS.locale, db)) === "en" ? "en" : "de";
+}
 
 async function readSetting(key: string, db: Db = prisma): Promise<string | null> {
   const row = await db.setting.findUnique({ where: { key } });
@@ -65,6 +76,7 @@ export async function getNotificationSettings(): Promise<NotificationSettingsDto
     notifyServerDown: await readBool(KEYS.serverDown, true),
     notifyBackupFailed: await readBool(KEYS.backupFailed, true),
     notifyTaskFailed: await readBool(KEYS.taskFailed, true),
+    notifyLocale: await readLocale(),
   };
 }
 
@@ -81,6 +93,7 @@ export async function updateNotificationSettings(input: {
   notifyServerDown?: boolean;
   notifyBackupFailed?: boolean;
   notifyTaskFailed?: boolean;
+  notifyLocale?: NotificationLocale;
 }): Promise<NotificationSettingsDto> {
   // Alle Upserts/Deletes in einer Transaktion — sonst könnte ein Fehler oder
   // eine parallele Änderung mittendrin eine teilweise/widersprüchliche
@@ -130,6 +143,9 @@ export async function updateNotificationSettings(input: {
     }
     if (input.notifyTaskFailed !== undefined) {
       await writeSetting(KEYS.taskFailed, String(input.notifyTaskFailed), tx);
+    }
+    if (input.notifyLocale !== undefined) {
+      await writeSetting(KEYS.locale, input.notifyLocale, tx);
     }
   });
 
@@ -184,9 +200,7 @@ async function postToDiscord(content: string): Promise<boolean> {
  * SMTP-Verbindung auf-/abzubauen. Ändern sich die Einstellungen, invalidiert
  * `invalidateEmailTransport()` den Cache; bei nächstem Bedarf wird neu gebaut.
  */
-let cachedTransport:
-  | { key: string; transport: import("nodemailer").Transporter }
-  | null = null;
+let cachedTransport: { key: string; transport: import("nodemailer").Transporter } | null = null;
 
 /** Wirft den gecachten SMTP-Transport weg (nach Settings-Änderung aufrufen). */
 function invalidateEmailTransport(): void {
@@ -257,24 +271,20 @@ async function postToEmail(subject: string, text: string): Promise<boolean> {
  * notify-Schaltern) und meldet den tatsächlichen Erfolg — nicht nur, dass ein
  * Kanal konfiguriert ist. */
 export async function sendTestNotification(channel: NotificationChannel): Promise<boolean> {
+  const m = notificationMessages(await readLocale());
   if (channel === "discord") {
     if ((await readSetting(KEYS.webhookEnc)) === null) return false;
-    return postToDiscord("✅ MineControl: Test-Benachrichtigung — der Webhook funktioniert.");
+    return postToDiscord(m.testDiscord);
   }
   const config = await buildEmailTransport();
   if (!config) return false;
-  return postToEmail(
-    "MineControl: Test-Benachrichtigung",
-    "Diese Testnachricht zeigt, dass der SMTP-Versand funktioniert.",
-  );
+  return postToEmail(m.testEmail.subject, m.testEmail.text);
 }
 
 export async function notifyServerDown(serverName: string): Promise<void> {
   if (!(await readBool(KEYS.serverDown, true))) return;
-  await Promise.all([
-    postToDiscord(`🔴 **${serverName}** ist offline gegangen.`),
-    postToEmail("MineControl: Server offline", `${serverName} ist offline gegangen.`),
-  ]);
+  const msg = notificationMessages(await readLocale()).serverDown(serverName);
+  await Promise.all([postToDiscord(msg.discord), postToEmail(msg.subject, msg.text)]);
 }
 
 /**
@@ -288,14 +298,13 @@ export async function notifyAutoRestart(
   maxAttempts: number,
 ): Promise<void> {
   if (!(await readBool(KEYS.serverDown, true))) return;
-  const detail = `nach ${minutesDown} min ohne Antwort (Versuch ${attempt}/${maxAttempts})`;
-  await Promise.all([
-    postToDiscord(`🔁 **${serverName}** wird automatisch neu gestartet — ${detail}.`),
-    postToEmail(
-      "MineControl: Auto-Restart ausgelöst",
-      `${serverName} wird automatisch neu gestartet — ${detail}.`,
-    ),
-  ]);
+  const msg = notificationMessages(await readLocale()).autoRestart(
+    serverName,
+    minutesDown,
+    attempt,
+    maxAttempts,
+  );
+  await Promise.all([postToDiscord(msg.discord), postToEmail(msg.subject, msg.text)]);
 }
 
 /** Auto-Restart hat nach der maximalen Anzahl Versuche aufgegeben. */
@@ -304,28 +313,14 @@ export async function notifyAutoRestartGaveUp(
   maxAttempts: number,
 ): Promise<void> {
   if (!(await readBool(KEYS.serverDown, true))) return;
-  const detail = `nach ${maxAttempts} erfolglosen Versuchen — manuelles Eingreifen nötig`;
-  await Promise.all([
-    postToDiscord(`⛔ Auto-Restart für **${serverName}** aufgegeben ${detail}.`),
-    postToEmail(
-      "MineControl: Auto-Restart aufgegeben",
-      `Auto-Restart für ${serverName} aufgegeben ${detail}.`,
-    ),
-  ]);
+  const msg = notificationMessages(await readLocale()).autoRestartGaveUp(serverName, maxAttempts);
+  await Promise.all([postToDiscord(msg.discord), postToEmail(msg.subject, msg.text)]);
 }
 
-export async function notifyBackupFailed(
-  serverName: string,
-  error: string,
-): Promise<void> {
+export async function notifyBackupFailed(serverName: string, error: string): Promise<void> {
   if (!(await readBool(KEYS.backupFailed, true))) return;
-  await Promise.all([
-    postToDiscord(`⚠️ Backup für **${serverName}** fehlgeschlagen: ${error}`),
-    postToEmail(
-      "MineControl: Backup fehlgeschlagen",
-      `Backup für ${serverName} fehlgeschlagen: ${error}`,
-    ),
-  ]);
+  const msg = notificationMessages(await readLocale()).backupFailed(serverName, error);
+  await Promise.all([postToDiscord(msg.discord), postToEmail(msg.subject, msg.text)]);
 }
 
 export async function notifyTaskFailed(
@@ -334,13 +329,6 @@ export async function notifyTaskFailed(
   error: string,
 ): Promise<void> {
   if (!(await readBool(KEYS.taskFailed, true))) return;
-  await Promise.all([
-    postToDiscord(
-      `⚠️ Geplante Aufgabe **${taskName}** (${serverName}) fehlgeschlagen: ${error}`,
-    ),
-    postToEmail(
-      "MineControl: Geplante Aufgabe fehlgeschlagen",
-      `Geplante Aufgabe ${taskName} (${serverName}) fehlgeschlagen: ${error}`,
-    ),
-  ]);
+  const msg = notificationMessages(await readLocale()).taskFailed(taskName, serverName, error);
+  await Promise.all([postToDiscord(msg.discord), postToEmail(msg.subject, msg.text)]);
 }
