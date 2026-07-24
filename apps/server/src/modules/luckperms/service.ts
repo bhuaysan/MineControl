@@ -135,9 +135,7 @@ function readContainerFile(serverId: string, path: string): Promise<Buffer | nul
           stream.on("end", next);
           stream.resume();
         });
-        extract.on("finish", () =>
-          resolve(chunks.length > 0 ? Buffer.concat(chunks) : null),
-        );
+        extract.on("finish", () => resolve(chunks.length > 0 ? Buffer.concat(chunks) : null));
         extract.on("error", () => resolve(null));
         (archive as unknown as NodeJS.ReadableStream).pipe(extract);
       })
@@ -175,7 +173,10 @@ async function readExport(server: Server): Promise<LpExport> {
   try {
     await createDockerAdapter(server).exec(["rm", "-f", path]);
   } catch (err) {
-    logger.error({ err, serverId: server.id, path }, "LuckPerms-Exportdatei konnte nicht entfernt werden");
+    logger.error(
+      { err, serverId: server.id, path },
+      "LuckPerms-Exportdatei konnte nicht entfernt werden",
+    );
   }
 
   if (!data) {
@@ -250,7 +251,7 @@ export async function getStatus(server: Server): Promise<LuckPermsStatusDto> {
   if (server.type !== "DOCKER" || !SUPPORTED.includes(server.edition)) {
     return { supported: false, installed: false, available: false };
   }
-  let installed = false;
+  let installed: boolean;
   try {
     const mods = await listInstalledMods(server);
     installed = mods.some((m) => /luckperms/i.test(m.filename));
@@ -275,9 +276,7 @@ export async function getStatus(server: Server): Promise<LuckPermsStatusDto> {
   return { supported: true, installed, available };
 }
 
-export async function install(
-  server: Server,
-): Promise<{ installed: boolean; message: string }> {
+export async function install(server: Server): Promise<{ installed: boolean; message: string }> {
   ensureSupported(server);
   const mods = await listInstalledMods(server).catch(() => []);
   if (mods.some((m) => /luckperms/i.test(m.filename))) {
@@ -290,8 +289,7 @@ export async function install(
   void broadcastServerStatus(server.id);
   return {
     installed: true,
-    message:
-      "LuckPerms wurde installiert — der Server startet neu. In ~1 Minute erneut öffnen.",
+    message: "LuckPerms wurde installiert — der Server startet neu. In ~1 Minute erneut öffnen.",
   };
 }
 
@@ -327,10 +325,7 @@ export async function deleteGroup(server: Server, name: string): Promise<void> {
   await lp(server, `deletegroup ${name}`);
 }
 
-export async function getGroup(
-  server: Server,
-  name: string,
-): Promise<LpGroupDetailDto> {
+export async function getGroup(server: Server, name: string): Promise<LpGroupDetailDto> {
   ensureSupported(server);
   assertGroup(name);
   const data = await readExport(server);
@@ -437,22 +432,14 @@ export async function getUser(server: Server, name: string): Promise<LpUserDto> 
   };
 }
 
-export async function addUserGroup(
-  server: Server,
-  name: string,
-  group: string,
-): Promise<void> {
+export async function addUserGroup(server: Server, name: string, group: string): Promise<void> {
   ensureSupported(server);
   assertUser(name);
   assertGroup(group);
   await lp(server, `user ${name} parent add ${group}`);
 }
 
-export async function removeUserGroup(
-  server: Server,
-  name: string,
-  group: string,
-): Promise<void> {
+export async function removeUserGroup(server: Server, name: string, group: string): Promise<void> {
   ensureSupported(server);
   assertUser(name);
   assertGroup(group);

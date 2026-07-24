@@ -1,0 +1,21 @@
+# Abhängigkeiten & Build-Ausgaben
+node_modules/
+**/dist/
+**/build/
+*.tsbuildinfo
+
+# Generiertes / Lockfiles
+pnpm-lock.yaml
+
+# Generierte Prisma-Migrationen (Codegen)
+apps/server/prisma/migrations/
+
+# Laufzeit-/lokale Daten
+*.db
+*.db-journal
+logs/
+backups/
+imports/
+.env
+.env.*
+!.env.example

@@ -117,7 +117,7 @@ export async function restoreBackup(server: Server, backupId: string): Promise<v
   if (!backup) throw new Error("Backup nicht gefunden");
 
   const container = docker.getContainer(containerName(server.id));
-  let wasRunning = false;
+  let wasRunning: boolean;
   try {
     const info = await container.inspect();
     wasRunning = info.State.Running === true;

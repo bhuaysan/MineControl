@@ -93,7 +93,7 @@ function hasSubscriber(topic: WsTopic): boolean {
 /**
  * Ein an einen Docker-Container gebundener Live-Stream. Wird beim ersten
  * Abonnenten aufgebaut und beim letzten wieder abgebaut. `attach()` kann
- * fehlschlagen (Container existiert/​läuft noch nicht) und wird dann später
+ * fehlschlagen (Container existiert/läuft noch nicht) und wird dann später
  * per `reattach…` erneut versucht.
  */
 class ManagedStream {
@@ -134,7 +134,10 @@ class ManagedStream {
       // nicht" (reattach versucht es erneut). Ein dauerhaftes Scheitern (Rechte,
       // Daemon) bliebe sonst unsichtbar — die Konsole wäre lautlos leer. Nur auf
       // debug, weil pro Poll ein weiterer Versuch folgt (kein Alarm, nur Spur).
-      logger.debug({ err, serverId: this.serverId }, "Live-Stream-Attach fehlgeschlagen — späterer Versuch folgt");
+      logger.debug(
+        { err, serverId: this.serverId },
+        "Live-Stream-Attach fehlgeschlagen — späterer Versuch folgt",
+      );
     } finally {
       this.attaching = false;
     }

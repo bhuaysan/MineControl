@@ -50,7 +50,7 @@ function isSuppressed(serverId: string): boolean {
 // --- Auto-Restart / Crash-Recovery ----------------------------------------
 //
 // Ergänzt Dockers `unless-stopped`-Policy (die exited Container neu startet):
-// Wir greifen NUR bei einem Container, der LÄUFT/​restartet, aber dessen
+// Wir greifen NUR bei einem Container, der LÄUFT/restartet, aber dessen
 // Minecraft-Server über längere Zeit nicht erreichbar ist (Status STARTING) —
 // also einem Hänger oder Crashloop, den die exit-basierte Docker-Policy nicht
 // löst. Bewusst gestoppte Server (OFFLINE) fassen wir nicht an; die
@@ -137,7 +137,12 @@ async function maybeAutoRestart(
   const minutesDown = Math.round(config.autoRestartGraceMs / 60_000);
   if (action === "restart") {
     logger.warn(
-      { serverId: server.id, attempt: next.attempts, maxAttempts: config.autoRestartMaxAttempts, minutesDown },
+      {
+        serverId: server.id,
+        attempt: next.attempts,
+        maxAttempts: config.autoRestartMaxAttempts,
+        minutesDown,
+      },
       `Auto-Restart: ${server.name} hängt seit ~${minutesDown} min — Neustart`,
     );
     // Den eigenen Neustart nicht als „Server offline" melden.
@@ -157,12 +162,7 @@ async function maybeAutoRestart(
         minutesDown,
       },
     });
-    await notifyAutoRestart(
-      server.name,
-      minutesDown,
-      next.attempts,
-      config.autoRestartMaxAttempts,
-    );
+    await notifyAutoRestart(server.name, minutesDown, next.attempts, config.autoRestartMaxAttempts);
   } else {
     logger.error(
       { serverId: server.id, maxAttempts: config.autoRestartMaxAttempts },
@@ -216,12 +216,13 @@ async function sampleAll(): Promise<void> {
 
       // Spieler-Sessions fortschreiben: online → Namen abgleichen, offline → schließen.
       try {
-        const names = status.online
-          ? (await adapter.getPlayers()).map((p) => p.name)
-          : [];
+        const names = status.online ? (await adapter.getPlayers()).map((p) => p.name) : [];
         await reconcileSessions(server.id, names);
       } catch (err) {
-        logger.error({ err, serverId: server.id }, `Session-Tracking für ${server.name} fehlgeschlagen`);
+        logger.error(
+          { err, serverId: server.id },
+          `Session-Tracking für ${server.name} fehlgeschlagen`,
+        );
       }
 
       // Down-Erkennung: ONLINE → OFFLINE/ERROR meldet (außer bei manuellem Stop).
