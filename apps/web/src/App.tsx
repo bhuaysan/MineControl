@@ -1,10 +1,13 @@
 import type { Role } from "@minecontrol/shared";
 import { hasRole } from "@minecontrol/shared";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext.js";
 import { AppShell } from "./components/AppShell.js";
+import { ConfirmDialog } from "./components/ConfirmDialog.js";
+import { Toaster } from "./components/Toaster.js";
+import { errorMessage, toast } from "./lib/toast.js";
 import { AddServerPage } from "./pages/AddServerPage.js";
 import { AuditPage } from "./pages/AuditPage.js";
 import { DashboardPage } from "./pages/DashboardPage.js";
@@ -18,6 +21,17 @@ import { UsersPage } from "./pages/UsersPage.js";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, retry: 1 } },
+  // Globales Auffangnetz: jede Mutation ohne eigenes onError zeigt ihren Fehler
+  // als Toast. Zuvor blieben fehlgeschlagene Aktionen (z. B. ein 502 beim
+  // Server-Start in ServerActions) in der UI komplett stumm. Eine Mutation, die
+  // per `meta.suppressErrorToast` markiert ist, wird übersprungen (dort wird der
+  // Fehler bewusst inline behandelt, etwa in der Konsole).
+  mutationCache: new MutationCache({
+    onError: (error, _vars, _ctx, mutation) => {
+      if (mutation.options.meta?.suppressErrorToast) return;
+      toast.error(errorMessage(error));
+    },
+  }),
 });
 
 /**
@@ -133,6 +147,8 @@ export function App() {
           <AppRoutes />
         </BrowserRouter>
       </AuthProvider>
+      <Toaster />
+      <ConfirmDialog />
     </QueryClientProvider>
   );
 }

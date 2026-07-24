@@ -3,6 +3,7 @@ import type { ScheduledTaskDto, TaskAction } from "@minecontrol/shared";
 import cron from "node-cron";
 import { createAdapter } from "../../adapters/registry.js";
 import { prisma } from "../../db.js";
+import { logger } from "../../logger.js";
 import {
   broadcastServerStatus,
   reattachServerStreams,
@@ -53,7 +54,7 @@ export function toTaskDto(task: ScheduledTask): ScheduledTaskDto {
 /** Führt die Aktion eines Tasks aus (aus cron oder manuell „jetzt ausführen"). */
 export async function runTask(taskId: string): Promise<void> {
   if (running.has(taskId)) {
-    console.warn(`Task ${taskId} übersprungen — läuft bereits.`);
+    logger.warn({ taskId }, "Task übersprungen — läuft bereits");
     return;
   }
   running.add(taskId);
@@ -81,7 +82,7 @@ export async function runTask(taskId: string): Promise<void> {
         data: { lastRunAt: new Date(), lastError: message },
       });
       await notifyTaskFailed(task.name, server.name, message);
-      console.error(`Task „${task.name}" fehlgeschlagen:`, err);
+      logger.error({ err, taskId: task.id, serverId: server.id }, `Task „${task.name}" fehlgeschlagen`);
     }
   } finally {
     running.delete(taskId);

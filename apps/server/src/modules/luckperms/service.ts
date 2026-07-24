@@ -9,6 +9,7 @@ import type {
   LuckPermsStatusDto,
 } from "@minecontrol/shared";
 import { containerName, docker } from "../../adapters/dockerClient.js";
+import { logger } from "../../logger.js";
 import { createAdapter, createDockerAdapter } from "../../adapters/registry.js";
 import { suppressDownAlert } from "../metrics/service.js";
 import { installMod, listInstalledMods } from "../mods/service.js";
@@ -174,7 +175,7 @@ async function readExport(server: Server): Promise<LpExport> {
   try {
     await createDockerAdapter(server).exec(["rm", "-f", path]);
   } catch (err) {
-    console.error(`LuckPerms-Exportdatei konnte nicht entfernt werden (${path}):`, err);
+    logger.error({ err, serverId: server.id, path }, "LuckPerms-Exportdatei konnte nicht entfernt werden");
   }
 
   if (!data) {

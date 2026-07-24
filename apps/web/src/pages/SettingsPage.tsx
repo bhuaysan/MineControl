@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../lib/api.js";
+import { confirmDialog } from "../lib/confirm.js";
 import { formatDateTime, formatRelative } from "../lib/format.js";
 
 export function SettingsPage() {
@@ -247,9 +248,14 @@ function ApiTokenSettings() {
                 </div>
               </div>
               <button
-                onClick={() => {
-                  if (confirm(`Token „${t.name}" widerrufen?`)) revokeMutation.mutate(t.id);
-                }}
+                onClick={() =>
+                  void confirmDialog({
+                    title: "Token widerrufen",
+                    message: `API-Token „${t.name}" widerrufen? Anwendungen, die ihn nutzen, verlieren den Zugriff.`,
+                    confirmLabel: "Widerrufen",
+                    danger: true,
+                  }).then((ok) => ok && revokeMutation.mutate(t.id))
+                }
                 className="shrink-0 rounded-md border border-status-error/40 px-2.5 py-1 text-xs text-status-error hover:bg-status-error/10"
               >
                 Widerrufen

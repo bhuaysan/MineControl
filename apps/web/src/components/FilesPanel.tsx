@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext.js";
 import { ApiRequestError, api } from "../lib/api.js";
+import { confirmDialog } from "../lib/confirm.js";
 import { formatBytes, formatDateTime } from "../lib/format.js";
 
 /** Fügt Segment an einen Pfad an (Basis „/" oder „/unterordner"). */
@@ -155,10 +156,14 @@ export function FilesPanel({ serverId }: { serverId: string }) {
                 )}
                 {can("ADMIN") && entry.type !== "other" && (
                   <button
-                    onClick={() => {
-                      if (confirm(`„${entry.name}" löschen?`))
-                        deleteMutation.mutate(joinPath(path, entry.name));
-                    }}
+                    onClick={() =>
+                      void confirmDialog({
+                        title: "Löschen",
+                        message: `„${entry.name}" löschen?`,
+                        confirmLabel: "Löschen",
+                        danger: true,
+                      }).then((ok) => ok && deleteMutation.mutate(joinPath(path, entry.name)))
+                    }
                     className="text-status-error hover:opacity-80"
                     title="Löschen"
                   >

@@ -1,4 +1,5 @@
 import { prisma } from "../../db.js";
+import { logger } from "../../logger.js";
 
 /** Schreibt einen Eintrag ins Audit-Log. Fehler werden geschluckt (best effort). */
 export async function recordAudit(params: {
@@ -18,6 +19,6 @@ export async function recordAudit(params: {
     });
   } catch (err) {
     // Audit darf die eigentliche Aktion nie blockieren.
-    console.error("Audit-Log konnte nicht geschrieben werden:", err);
+    logger.error({ err, action: params.action }, "Audit-Log konnte nicht geschrieben werden");
   }
 }

@@ -3,6 +3,7 @@ import type { NotificationChannel, NotificationSettingsDto } from "@minecontrol/
 import nodemailer from "nodemailer";
 import { decryptSecret, encryptSecret } from "../../crypto.js";
 import { prisma } from "../../db.js";
+import { logger } from "../../logger.js";
 
 /** Client oder (innerhalb einer Transaktion) der Transaktions-Client. */
 type Db = Prisma.TransactionClient;
@@ -165,12 +166,12 @@ async function postToDiscord(content: string): Promise<boolean> {
       signal: controller.signal,
     });
     if (!res.ok) {
-      console.error(`Discord-Webhook antwortete mit ${res.status}`);
+      logger.error({ status: res.status }, "Discord-Webhook antwortete mit Fehlerstatus");
       return false;
     }
     return true;
   } catch (err) {
-    console.error("Discord-Benachrichtigung fehlgeschlagen:", err);
+    logger.error({ err }, "Discord-Benachrichtigung fehlgeschlagen");
     return false;
   } finally {
     clearTimeout(timer);
@@ -247,7 +248,7 @@ async function postToEmail(subject: string, text: string): Promise<boolean> {
     });
     return true;
   } catch (err) {
-    console.error("E-Mail-Benachrichtigung fehlgeschlagen:", err);
+    logger.error({ err }, "E-Mail-Benachrichtigung fehlgeschlagen");
     return false;
   }
 }

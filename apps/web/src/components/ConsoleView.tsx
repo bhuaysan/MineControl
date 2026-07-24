@@ -1,7 +1,14 @@
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { api } from "../lib/api.js";
 import { openTopicSocket } from "../lib/ws.js";
 
@@ -13,9 +20,20 @@ const THEME = {
   selectionBackground: "#264f78",
 };
 
+/** Hervorhebung der Suchtreffer im Terminal. */
+const SEARCH_DECORATIONS = {
+  matchBackground: "#ca8a04",
+  matchOverviewRuler: "#ca8a04",
+  activeMatchBackground: "#4ade80",
+  activeMatchColorOverviewRuler: "#4ade80",
+};
+
 /**
  * Live-Konsole eines Docker-Servers: xterm.js-Terminal mit Log-Stream
- * (`console:<id>`-Abo) und optionaler Befehlseingabe (via RCON).
+ * (`console:<id>`-Abo) und optionaler Befehlseingabe (via RCON). xterm rendert
+ * ANSI-Farben nativ und scrollt neue Zeilen automatisch mit, solange man unten
+ * steht. Zusätzlich: Volltextsuche im Puffer und ein „nach unten"-Knopf, sobald
+ * man hochgescrollt hat (dann pausiert das Auto-Scroll bewusst).
  */
 export function ConsoleView({
   serverId,
@@ -26,8 +44,11 @@ export function ConsoleView({
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
+  const searchRef = useRef<SearchAddon | null>(null);
   const [connected, setConnected] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
 
+  const [search, setSearch] = useState("");
   const [command, setCommand] = useState("");
   const history = useRef<string[]>([]);
   const historyPos = useRef<number>(-1);
@@ -46,10 +67,22 @@ export function ConsoleView({
       theme: THEME,
     });
     const fit = new FitAddon();
+    const searchAddon = new SearchAddon();
     term.loadAddon(fit);
+    term.loadAddon(searchAddon);
     term.open(host);
     fit.fit();
     termRef.current = term;
+    searchRef.current = searchAddon;
+
+    // „Unten"-Zustand verfolgen: Steht der Viewport auf der jüngsten Zeile, gilt
+    // Auto-Scroll; sonst zeigen wir den „nach unten"-Knopf und stören das Lesen
+    // im Verlauf nicht.
+    const updateAtBottom = () => {
+      const buffer = term.buffer.active;
+      setAtBottom(buffer.viewportY >= buffer.baseY);
+    };
+    const scrollSub = term.onScroll(updateAtBottom);
 
     const resizeObserver = new ResizeObserver(() => {
       try {
@@ -72,9 +105,11 @@ export function ConsoleView({
 
     return () => {
       closeSocket();
+      scrollSub.dispose();
       resizeObserver.disconnect();
       term.dispose();
       termRef.current = null;
+      searchRef.current = null;
     };
   }, [serverId]);
 
@@ -120,11 +155,60 @@ export function ConsoleView({
     }
   };
 
+  const findNext = () => searchRef.current?.findNext(search, { decorations: SEARCH_DECORATIONS });
+  const findPrevious = () =>
+    searchRef.current?.findPrevious(search, { decorations: SEARCH_DECORATIONS });
+
+  // Enter = nächster Treffer, Shift+Enter = vorheriger.
+  const onSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (e.shiftKey) findPrevious();
+      else findNext();
+    } else if (e.key === "Escape") {
+      setSearch("");
+      searchRef.current?.clearDecorations();
+    }
+  };
+
+  const scrollToBottom = () => termRef.current?.scrollToBottom();
+
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-neutral-800 bg-[#0a0a0a]">
-      <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-1.5 text-xs text-neutral-500">
-        <span>Konsole</span>
-        <span className="flex items-center gap-1.5">
+      <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-3 py-1.5 text-xs text-neutral-500">
+        <span className="shrink-0">Konsole</span>
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              if (!e.target.value) searchRef.current?.clearDecorations();
+            }}
+            onKeyDown={onSearchKeyDown}
+            placeholder="Suchen…"
+            aria-label="In der Konsole suchen"
+            className="min-w-0 flex-1 rounded bg-neutral-900 px-2 py-1 text-xs text-neutral-200 outline-none placeholder:text-neutral-600 focus:ring-1 focus:ring-neutral-700"
+          />
+          <button
+            type="button"
+            onClick={findPrevious}
+            disabled={!search}
+            className="rounded px-1.5 py-1 hover:bg-neutral-800 disabled:opacity-40"
+            title="Vorheriger Treffer (Shift+Enter)"
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            onClick={findNext}
+            disabled={!search}
+            className="rounded px-1.5 py-1 hover:bg-neutral-800 disabled:opacity-40"
+            title="Nächster Treffer (Enter)"
+          >
+            ↓
+          </button>
+        </div>
+        <span className="flex shrink-0 items-center gap-1.5">
           <span
             className={`inline-block size-2 rounded-full ${
               connected ? "bg-status-online" : "bg-status-offline"
@@ -133,7 +217,19 @@ export function ConsoleView({
           {connected ? "live" : "getrennt"}
         </span>
       </div>
-      <div ref={hostRef} className="h-[420px] w-full px-2 py-1" />
+      <div className="relative">
+        <div ref={hostRef} className="h-[420px] w-full px-2 py-1" />
+        {!atBottom && (
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            className="absolute bottom-3 right-4 rounded-full border border-neutral-700 bg-neutral-900/90 px-3 py-1 text-xs text-neutral-200 shadow-lg hover:bg-neutral-800"
+            title="Zum aktuellen Ende springen"
+          >
+            ↓ Neueste
+          </button>
+        )}
+      </div>
       {canInput && (
         <form
           onSubmit={onSubmit}

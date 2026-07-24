@@ -5,6 +5,7 @@ import { createAdapter } from "../../adapters/registry.js";
 import type { ServerAdapter } from "../../adapters/types.js";
 import { config } from "../../config.js";
 import { prisma } from "../../db.js";
+import { logger } from "../../logger.js";
 import { recordAudit } from "../audit/service.js";
 import {
   notifyAutoRestart,
@@ -135,8 +136,9 @@ async function maybeAutoRestart(
 
   const minutesDown = Math.round(config.autoRestartGraceMs / 60_000);
   if (action === "restart") {
-    console.warn(
-      `Auto-Restart: ${server.name} hängt seit ~${minutesDown} min — Neustart (Versuch ${next.attempts}/${config.autoRestartMaxAttempts}).`,
+    logger.warn(
+      { serverId: server.id, attempt: next.attempts, maxAttempts: config.autoRestartMaxAttempts, minutesDown },
+      `Auto-Restart: ${server.name} hängt seit ~${minutesDown} min — Neustart`,
     );
     // Den eigenen Neustart nicht als „Server offline" melden.
     suppressDownAlert(server.id);
@@ -144,7 +146,7 @@ async function maybeAutoRestart(
       await adapter.restart();
       reattachServerStreams(server.id);
     } catch (err) {
-      console.error(`Auto-Restart für ${server.name} fehlgeschlagen:`, err);
+      logger.error({ err, serverId: server.id }, `Auto-Restart für ${server.name} fehlgeschlagen`);
     }
     await recordAudit({
       serverId: server.id,
@@ -162,8 +164,9 @@ async function maybeAutoRestart(
       config.autoRestartMaxAttempts,
     );
   } else {
-    console.error(
-      `Auto-Restart: für ${server.name} nach ${config.autoRestartMaxAttempts} Versuchen aufgegeben.`,
+    logger.error(
+      { serverId: server.id, maxAttempts: config.autoRestartMaxAttempts },
+      `Auto-Restart: für ${server.name} nach ${config.autoRestartMaxAttempts} Versuchen aufgegeben`,
     );
     await recordAudit({
       serverId: server.id,
@@ -218,7 +221,7 @@ async function sampleAll(): Promise<void> {
           : [];
         await reconcileSessions(server.id, names);
       } catch (err) {
-        console.error(`Session-Tracking für ${server.name} fehlgeschlagen:`, err);
+        logger.error({ err, serverId: server.id }, `Session-Tracking für ${server.name} fehlgeschlagen`);
       }
 
       // Down-Erkennung: ONLINE → OFFLINE/ERROR meldet (außer bei manuellem Stop).
@@ -232,7 +235,7 @@ async function sampleAll(): Promise<void> {
       // Auto-Restart/Crash-Recovery (nur Docker + aktiviert).
       await maybeAutoRestart(server, adapter, now);
     } catch (err) {
-      console.error(`Metrik-Sample für ${server.name} fehlgeschlagen:`, err);
+      logger.error({ err, serverId: server.id }, `Metrik-Sample für ${server.name} fehlgeschlagen`);
     }
   }
 }
@@ -251,7 +254,7 @@ let sampling = false;
  * `intervalMs` dauert (z. B. hängende Docker-/RCON-Aufrufe). */
 async function sampleAllExclusive(): Promise<void> {
   if (sampling) {
-    console.warn("Metrik-Sample übersprungen — vorheriger Durchgang läuft noch.");
+    logger.warn("Metrik-Sample übersprungen — vorheriger Durchgang läuft noch");
     return;
   }
   sampling = true;

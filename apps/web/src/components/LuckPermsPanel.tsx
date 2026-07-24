@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthContext.js";
 import { ApiRequestError, api } from "../lib/api.js";
+import { confirmDialog } from "../lib/confirm.js";
 
 const inputClass =
   "rounded-md border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-sm outline-none focus:border-status-online";
@@ -170,9 +171,14 @@ function GroupsView({ serverId, isAdmin }: { serverId: string; isAdmin: boolean 
                 </button>
                 {isAdmin && g.name !== "default" && (
                   <button
-                    onClick={() => {
-                      if (confirm(`Gruppe „${g.name}" löschen?`)) deleteMut.mutate(g.name);
-                    }}
+                    onClick={() =>
+                      void confirmDialog({
+                        title: "Gruppe löschen",
+                        message: `Gruppe „${g.name}" löschen?`,
+                        confirmLabel: "Löschen",
+                        danger: true,
+                      }).then((ok) => ok && deleteMut.mutate(g.name))
+                    }
                     disabled={deleteMut.isPending}
                     className="text-status-error hover:opacity-80"
                     title="Löschen"

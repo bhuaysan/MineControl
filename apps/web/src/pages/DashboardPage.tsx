@@ -1,12 +1,13 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
+import { EmptyState, ErrorState, LoadingState } from "../components/QueryStates.js";
 import { ServerCard } from "../components/ServerCard.js";
 import { useDashboardSocket } from "../hooks/useDashboardSocket.js";
 import { useServers } from "../hooks/useServers.js";
 
 export function DashboardPage() {
   const { can } = useAuth();
-  const { data: servers, isLoading, error } = useServers();
+  const { data: servers, isLoading, error, refetch } = useServers();
   const wsState = useDashboardSocket();
 
   const online = servers?.filter((s) => s.status.online).length ?? 0;
@@ -42,18 +43,25 @@ export function DashboardPage() {
         </div>
       )}
 
-      {isLoading && <p className="text-neutral-500">Lade Server…</p>}
-      {error && <p className="text-status-error">Server konnten nicht geladen werden.</p>}
+      {isLoading && <LoadingState label="Lade Server…" />}
+      {error && (
+        <ErrorState
+          message="Server konnten nicht geladen werden."
+          onRetry={() => void refetch()}
+        />
+      )}
 
       {servers && servers.length === 0 && (
-        <div className="rounded-lg border border-dashed border-neutral-800 p-10 text-center text-neutral-500">
-          <p className="mb-2">Noch keine Server eingerichtet.</p>
-          {can("ADMIN") && (
-            <Link to="/servers/new" className="text-status-online hover:underline">
-              Ersten Server hinzufügen
-            </Link>
-          )}
-        </div>
+        <EmptyState
+          title="Noch keine Server eingerichtet."
+          action={
+            can("ADMIN") ? (
+              <Link to="/servers/new" className="text-status-online hover:underline">
+                Ersten Server hinzufügen
+              </Link>
+            ) : undefined
+          }
+        />
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

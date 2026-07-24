@@ -11,6 +11,7 @@ import { MetricHistoryChart } from "../components/MetricHistoryChart.js";
 import { ModsPanel } from "../components/ModsPanel.js";
 import { PlayerActionMenu } from "../components/PlayerActions.js";
 import { PlayerAvatar } from "../components/PlayerAvatar.js";
+import { ErrorState, LoadingState } from "../components/QueryStates.js";
 import { ServerActions } from "../components/ServerActions.js";
 import { ServerPropertiesForm } from "../components/ServerPropertiesForm.js";
 import { StatusBadge } from "../components/StatusBadge.js";
@@ -19,6 +20,8 @@ import { WorldsPanel } from "../components/WorldsPanel.js";
 import { useServerMetrics } from "../hooks/useServerMetrics.js";
 import { serversQueryKey } from "../hooks/useServers.js";
 import { api } from "../lib/api.js";
+import { confirmDialog } from "../lib/confirm.js";
+import { toast } from "../lib/toast.js";
 import { formatDuration } from "../lib/format.js";
 
 type Tab =
@@ -85,6 +88,9 @@ export function ServerDetailPage() {
   const metrics = useServerMetrics(id ?? "", Boolean(id) && hasMetrics && tab === "overview" && running);
 
   const commandMutation = useMutation({
+    // Fehler werden hier bewusst inline in die Ausgabe geschrieben — der globale
+    // Fehler-Toast (App.tsx) würde die Meldung sonst doppelt zeigen.
+    meta: { suppressErrorToast: true },
     mutationFn: (cmd: string) => api.sendCommand(id!, cmd),
     onSuccess: (res, cmd) => {
       setOutput((prev) => [...prev, `> ${cmd}`, res.response || "(keine Antwort)"]);
@@ -98,6 +104,7 @@ export function ServerDetailPage() {
   const deleteMutation = useMutation({
     mutationFn: (keepWorld: boolean) => api.deleteServer(id!, keepWorld),
     onSuccess: () => {
+      toast.success("Server entfernt");
       void queryClient.invalidateQueries({ queryKey: serversQueryKey });
       navigate("/");
     },
@@ -108,19 +115,30 @@ export function ServerDetailPage() {
     if (command.trim()) commandMutation.mutate(command.trim());
   };
 
-  const onDelete = () => {
-    if (!confirm(`Server „${server?.name}" wirklich entfernen?`)) return;
+  const onDelete = async () => {
+    const confirmed = await confirmDialog({
+      title: "Server entfernen",
+      message: `Server „${server?.name}" wirklich entfernen? Diese Aktion kann nicht rückgängig gemacht werden.`,
+      confirmLabel: "Entfernen",
+      danger: true,
+    });
+    if (!confirmed) return;
+    // Docker-Server: separat entscheiden, ob die Weltdaten (Volume) erhalten
+    // bleiben. Bestätigen = behalten, Abbrechen dieses Dialogs = endgültig löschen.
     let keepWorld = false;
     if (server?.type === "DOCKER") {
-      keepWorld = confirm(
-        "Weltdaten behalten?\n\nOK = Volume behalten · Abbrechen = endgültig löschen",
-      );
+      keepWorld = await confirmDialog({
+        title: "Weltdaten behalten?",
+        message: "Sollen die Weltdaten (Docker-Volume) erhalten bleiben?",
+        confirmLabel: "Behalten",
+        cancelLabel: "Endgültig löschen",
+      });
     }
     deleteMutation.mutate(keepWorld);
   };
 
-  if (isLoading) return <p className="text-neutral-500">Lade Server…</p>;
-  if (!server) return <p className="text-status-error">Server nicht gefunden.</p>;
+  if (isLoading) return <LoadingState label="Lade Server…" />;
+  if (!server) return <ErrorState message="Server nicht gefunden." />;
 
   const players = playersQuery.data ?? [];
 
@@ -162,7 +180,7 @@ export function ServerDetailPage() {
           {hasLifecycle && can("MODERATOR") && <ServerActions server={server} />}
           {can("ADMIN") && (
             <button
-              onClick={onDelete}
+              onClick={() => void onDelete()}
               disabled={deleteMutation.isPending}
               className="rounded-md border border-status-error/40 px-3 py-1.5 text-sm text-status-error hover:bg-status-error/10 disabled:opacity-50"
             >

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../lib/api.js";
+import { confirmDialog } from "../lib/confirm.js";
 import { formatRelative } from "../lib/format.js";
 
 const usersKey = ["users"] as const;
@@ -81,10 +82,14 @@ export function UsersPage() {
     if (pw) passwordMutation.mutate({ id: u.id, password: pw });
   };
 
-  const onDelete = (u: UserDto) => {
-    if (confirm(`Benutzer „${u.username}" wirklich löschen?`)) {
-      deleteMutation.mutate(u.id);
-    }
+  const onDelete = async (u: UserDto) => {
+    const ok = await confirmDialog({
+      title: "Benutzer löschen",
+      message: `Benutzer „${u.username}" wirklich löschen?`,
+      confirmLabel: "Löschen",
+      danger: true,
+    });
+    if (ok) deleteMutation.mutate(u.id);
   };
 
   const inputClass =
@@ -197,7 +202,7 @@ export function UsersPage() {
                       Passwort
                     </button>
                     <button
-                      onClick={() => onDelete(u)}
+                      onClick={() => void onDelete(u)}
                       disabled={isSelf}
                       className="rounded px-2 py-1 text-status-error hover:bg-status-error/10 disabled:opacity-30"
                       title={isSelf ? "Man kann sich nicht selbst löschen" : "Löschen"}

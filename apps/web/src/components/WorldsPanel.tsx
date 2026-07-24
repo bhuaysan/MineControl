@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext.js";
 import { ApiRequestError, api } from "../lib/api.js";
+import { confirmDialog } from "../lib/confirm.js";
 import { formatBytes } from "../lib/format.js";
 
 const inputClass =
@@ -76,20 +77,27 @@ export function WorldsPanel({ serverId }: { serverId: string }) {
                   {isAdmin && !w.active && (
                     <>
                       <button
-                        onClick={() => {
-                          if (confirm(`Zur Welt „${w.name}" wechseln? Der Server startet neu.`))
-                            switchMut.mutate(w.name);
-                        }}
+                        onClick={() =>
+                          void confirmDialog({
+                            title: "Welt wechseln",
+                            message: `Zur Welt „${w.name}" wechseln? Der Server startet dazu neu.`,
+                            confirmLabel: "Wechseln",
+                          }).then((ok) => ok && switchMut.mutate(w.name))
+                        }
                         disabled={switchMut.isPending}
                         className="rounded-md border border-neutral-700 px-2 py-0.5 text-xs text-neutral-200 hover:bg-neutral-800 disabled:opacity-50"
                       >
                         Aktivieren
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm(`Welt „${w.name}" endgültig löschen?`))
-                            deleteMut.mutate(w.name);
-                        }}
+                        onClick={() =>
+                          void confirmDialog({
+                            title: "Welt löschen",
+                            message: `Welt „${w.name}" endgültig löschen?`,
+                            confirmLabel: "Löschen",
+                            danger: true,
+                          }).then((ok) => ok && deleteMut.mutate(w.name))
+                        }
                         disabled={deleteMut.isPending}
                         className="rounded-md border border-neutral-700 px-2 py-0.5 text-xs text-status-error hover:bg-neutral-800 disabled:opacity-50"
                       >

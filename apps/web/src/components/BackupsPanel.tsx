@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../lib/api.js";
+import { confirmDialog } from "../lib/confirm.js";
 import { formatBytes, formatDateTime } from "../lib/format.js";
 
 export function BackupsPanel({ serverId }: { serverId: string }) {
@@ -27,15 +28,15 @@ export function BackupsPanel({ serverId }: { serverId: string }) {
     onSuccess: invalidate,
   });
 
-  const onRestore = (backupId: string) => {
-    if (
-      confirm(
-        "Backup zurückspielen? Der Server wird dazu gestoppt und mit den\n" +
-          "gesicherten Weltdaten neu gestartet. Aktuelle Änderungen gehen verloren.",
-      )
-    ) {
-      restoreMutation.mutate(backupId);
-    }
+  const onRestore = async (backupId: string) => {
+    const ok = await confirmDialog({
+      title: "Backup zurückspielen",
+      message:
+        "Der Server wird dazu gestoppt und mit den gesicherten Weltdaten neu gestartet. Aktuelle Änderungen gehen verloren.",
+      confirmLabel: "Zurückspielen",
+      danger: true,
+    });
+    if (ok) restoreMutation.mutate(backupId);
   };
 
   return (
@@ -100,9 +101,14 @@ export function BackupsPanel({ serverId }: { serverId: string }) {
                     Zurückspielen
                   </button>
                   <button
-                    onClick={() => {
-                      if (confirm("Backup löschen?")) deleteMutation.mutate(b.id);
-                    }}
+                    onClick={() =>
+                      void confirmDialog({
+                        title: "Backup löschen",
+                        message: "Dieses Backup endgültig löschen?",
+                        confirmLabel: "Löschen",
+                        danger: true,
+                      }).then((ok) => ok && deleteMutation.mutate(b.id))
+                    }
                     className="rounded-md border border-status-error/40 px-2.5 py-1 text-xs text-status-error hover:bg-status-error/10"
                   >
                     Löschen

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../lib/api.js";
+import { confirmDialog } from "../lib/confirm.js";
 import { formatBytes } from "../lib/format.js";
 
 /** Kompakte Download-Zahl: 15,0M / 330k / 42. */
@@ -167,9 +168,14 @@ export function ModsPanel({
                   )}
                   {can("ADMIN") && (
                     <button
-                      onClick={() => {
-                        if (confirm(`„${m.filename}" löschen?`)) deleteMutation.mutate(m.filename);
-                      }}
+                      onClick={() =>
+                        void confirmDialog({
+                          title: "Löschen",
+                          message: `„${m.filename}" löschen?`,
+                          confirmLabel: "Löschen",
+                          danger: true,
+                        }).then((ok) => ok && deleteMutation.mutate(m.filename))
+                      }
                       className="text-status-error hover:opacity-80"
                       title="Löschen"
                     >

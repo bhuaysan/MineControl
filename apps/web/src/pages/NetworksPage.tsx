@@ -12,6 +12,7 @@ import { StatusBadge, StatusDot } from "../components/StatusBadge.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { useServers } from "../hooks/useServers.js";
 import { ApiRequestError, api } from "../lib/api.js";
+import { confirmDialog } from "../lib/confirm.js";
 
 const inputClass =
   "rounded-md border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-sm outline-none focus:border-status-online";
@@ -242,14 +243,14 @@ function NetworkCard({ network, isAdmin }: { network: NetworkDto; isAdmin: boole
           <StatusBadge state={network.proxy.state} />
           {isAdmin && (
             <button
-              onClick={() => {
-                if (
-                  confirm(
-                    `Netzwerk „${network.name}" löschen? Der Proxy wird entfernt, die Subserver bleiben als eigenständige Server erhalten.`,
-                  )
-                )
-                  remove.mutate();
-              }}
+              onClick={() =>
+                void confirmDialog({
+                  title: "Netzwerk löschen",
+                  message: `Netzwerk „${network.name}" löschen? Der Proxy wird entfernt, die Subserver bleiben als eigenständige Server erhalten.`,
+                  confirmLabel: "Löschen",
+                  danger: true,
+                }).then((ok) => ok && remove.mutate())
+              }
               disabled={remove.isPending}
               className="rounded-md border border-neutral-700 px-2.5 py-1 text-sm text-status-error hover:bg-neutral-800 disabled:opacity-50"
             >
@@ -289,10 +290,13 @@ function NetworkCard({ network, isAdmin }: { network: NetworkDto; isAdmin: boole
                 </span>
                 {isAdmin && (
                   <button
-                    onClick={() => {
-                      if (confirm(`„${m.name}" aus dem Netzwerk lösen?`))
-                        detach.mutate(m.serverId);
-                    }}
+                    onClick={() =>
+                      void confirmDialog({
+                        title: "Subserver lösen",
+                        message: `„${m.name}" aus dem Netzwerk lösen?`,
+                        confirmLabel: "Lösen",
+                      }).then((ok) => ok && detach.mutate(m.serverId))
+                    }
                     disabled={detach.isPending}
                     className="shrink-0 rounded-md border border-neutral-700 px-2 py-0.5 text-xs text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
                   >

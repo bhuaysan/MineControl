@@ -2,9 +2,11 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import websocket from "@fastify/websocket";
-import Fastify from "fastify";
+import Fastify, { type FastifyError } from "fastify";
 import { config } from "./config.js";
 import { prisma } from "./db.js";
+import { checkReadiness } from "./health.js";
+import { logger, loggerOptions } from "./logger.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { auditRoutes } from "./modules/audit/routes.js";
 import { backupRoutes } from "./modules/backups/routes.js";
@@ -28,12 +30,10 @@ import { registerWebsocket } from "./ws/index.js";
 
 async function main(): Promise<void> {
   const app = Fastify({
-    logger: {
-      level: config.isProduction ? "info" : "debug",
-      transport: config.isProduction
-        ? undefined
-        : { target: "pino-pretty", options: { translateTime: "HH:MM:ss" } },
-    },
+    // Geteilte pino-Konfiguration (siehe logger.ts) — identisch zu der der
+    // eigenständigen logger-Instanz, die alle Hintergrunddienste nutzen. So
+    // haben Request-Logs und Betriebs-Logs dasselbe Format und Level.
+    logger: loggerOptions,
     // Läuft produktiv hinter Caddy (deploy/Caddyfile) als einzigem Reverse-Proxy
     // — request.ip muss den echten Client aus X-Forwarded-For lesen, sonst
     // träfe IP-basiertes Rate-Limiting (Login/2FA) alle Nutzer als eine Quelle.
@@ -46,7 +46,44 @@ async function main(): Promise<void> {
   // Datei-Uploads (Datei-Manager) — Obergrenze 50 MB je Datei.
   await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
 
+  // Liveness: „Prozess läuft und beantwortet Requests" — bewusst ohne
+  // Abhängigkeitsprüfung, damit ein kurzzeitig gestörter Docker-Daemon/DB nicht
+  // den Prozess selbst als tot markiert (und ihn ein Orchestrator killt).
   app.get("/api/health", async () => ({ status: "ok" }));
+
+  // Readiness: prüft die kritischen Abhängigkeiten (DB, Docker-Daemon). 503,
+  // sobald eine nicht erreichbar ist — für Monitoring/Compose-Healthcheck, das
+  // echte Arbeitsfähigkeit sehen soll. Antwort ist secret-frei (siehe health.ts).
+  app.get("/api/health/ready", async (_request, reply) => {
+    const report = await checkReadiness();
+    return reply.code(report.status === "ready" ? 200 : 503).send(report);
+  });
+
+  // Globaler Error-Handler: fängt jeden Fehler, den eine Route NICHT selbst
+  // behandelt (unerwarteter Throw, Prisma-Fehler, …). Ohne ihn liefert Fastifys
+  // Default die rohe `err.message` im 500-Body aus — möglicher Info-Leak. Hier
+  // wird der volle Fehler strukturiert geloggt und nach außen nur eine generische
+  // Meldung gegeben. Client-Fehler (4xx, z. B. Body-Validierung) behalten ihren
+  // Status und ihre (unkritische) Meldung.
+  app.setErrorHandler((error: FastifyError, request, reply) => {
+    const status = error.statusCode ?? 500;
+    if (status >= 500) {
+      request.log.error({ err: error }, "Unbehandelter Fehler in Route");
+      return reply.code(500).send({
+        error: "internal",
+        message: "Interner Serverfehler",
+      });
+    }
+    return reply.code(status).send({
+      error: error.code ?? "bad_request",
+      message: error.message,
+    });
+  });
+
+  // Konsistente 404-Antwort im gleichen { error, message }-Schema wie die Routen.
+  app.setNotFoundHandler((_request, reply) => {
+    return reply.code(404).send({ error: "not_found", message: "Nicht gefunden" });
+  });
 
   await app.register(authRoutes);
   await app.register(serverRoutes);
@@ -92,7 +129,7 @@ async function main(): Promise<void> {
       await app.close();
       await prisma.$disconnect();
     } catch (err) {
-      console.error("Fehler beim Herunterfahren:", err);
+      logger.error({ err }, "Fehler beim Herunterfahren");
     } finally {
       clearTimeout(forceExit);
       process.exit(exitCode);
@@ -101,11 +138,11 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => void shutdown("SIGINT", 0));
   process.on("SIGTERM", () => void shutdown("SIGTERM", 0));
   process.on("uncaughtException", (err) => {
-    console.error("Unbehandelte Ausnahme:", err);
+    logger.error({ err }, "Unbehandelte Ausnahme");
     void shutdown("uncaughtException", 1);
   });
   process.on("unhandledRejection", (reason) => {
-    console.error("Unbehandelte Promise-Ablehnung:", reason);
+    logger.error({ err: reason }, "Unbehandelte Promise-Ablehnung");
     void shutdown("unhandledRejection", 1);
   });
 
@@ -113,6 +150,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("Serverstart fehlgeschlagen:", err);
+  logger.error({ err }, "Serverstart fehlgeschlagen");
   process.exit(1);
 });

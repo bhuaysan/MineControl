@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthContext.js";
 import { api } from "../lib/api.js";
+import { confirmDialog } from "../lib/confirm.js";
 import { formatDateTime } from "../lib/format.js";
 
 const ACTION_LABELS: Record<TaskAction, string> = {
@@ -101,9 +102,14 @@ export function TasksPanel({ serverId }: { serverId: string }) {
                       {t.enabled ? "Pause" : "Aktiv"}
                     </button>
                     <button
-                      onClick={() => {
-                        if (confirm(`Zeitplan „${t.name}" löschen?`)) deleteMutation.mutate(t.id);
-                      }}
+                      onClick={() =>
+                        void confirmDialog({
+                          title: "Zeitplan löschen",
+                          message: `Zeitplan „${t.name}" löschen?`,
+                          confirmLabel: "Löschen",
+                          danger: true,
+                        }).then((ok) => ok && deleteMutation.mutate(t.id))
+                      }
                       className="rounded-md border border-status-error/40 px-2.5 py-1 text-xs text-status-error hover:bg-status-error/10"
                     >
                       ✕

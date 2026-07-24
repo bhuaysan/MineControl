@@ -4,6 +4,7 @@ import type { Server } from "@prisma/client";
 import * as tar from "tar-stream";
 import { config } from "../../config.js";
 import { markProvisioning } from "../../adapters/docker.js";
+import { logger } from "../../logger.js";
 import { prisma } from "../../db.js";
 import { importArchiveIntoVolume } from "./import.js";
 import {
@@ -349,7 +350,10 @@ export async function writeServerProperties(
 
 // ── Generische Datei-Helfer (für Velocity-/Paper-Konfiguration) ───────────────
 
-/** Liest eine Textdatei aus dem Container-Volume; `null`, falls nicht vorhanden. */
+/** Liest eine Textdatei aus dem Container-Volume; `null`, falls nicht vorhanden.
+ * Nur ein echtes 404 (Datei/Container fehlt) ergibt `null` — jede andere Störung
+ * (Docker-/Tar-Fehler) wird geloggt und `null` zurückgegeben, statt sie stumm mit
+ * „Datei fehlt" gleichzusetzen (wie {@link readServerProperties} 404 sauber trennt). */
 export async function readDataTextFile(
   serverId: string,
   path: string,
@@ -358,7 +362,10 @@ export async function readDataTextFile(
   try {
     const archive = await container.getArchive({ path });
     return await extractSingleFile(archive);
-  } catch {
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode !== 404) {
+      logger.warn({ err, serverId, path }, "Datei aus Container-Volume konnte nicht gelesen werden");
+    }
     return null;
   }
 }

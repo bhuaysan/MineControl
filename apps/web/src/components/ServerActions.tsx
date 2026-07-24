@@ -3,6 +3,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { serversQueryKey } from "../hooks/useServers.js";
+import { confirmDialog } from "../lib/confirm.js";
+import { toast } from "../lib/toast.js";
+
+/** Nutzerlesbare Rückmeldung je Lifecycle-Aktion (Erfolgs-Toast). */
+const ACTION_LABEL: Record<LifecycleAction, string> = {
+  start: "Server wird gestartet",
+  stop: "Server wird gestoppt",
+  restart: "Server wird neu gestartet",
+  kill: "Server wird hart beendet",
+};
 
 /**
  * Start/Stop/Restart/Kill-Buttons. Zeigt nur die für den aktuellen Zustand &
@@ -22,16 +32,24 @@ export function ServerActions({ server }: { server: ServerDto }) {
 
   const mutation = useMutation({
     mutationFn: (action: LifecycleAction) => api.lifecycleAction(server.id, action),
+    onSuccess: (_data, action) => toast.success(ACTION_LABEL[action]),
     onSettled: invalidate,
   });
 
   const autoRestartMutation = useMutation({
     mutationFn: (enabled: boolean) => api.setAutoRestart(server.id, enabled),
+    onSuccess: (_data, enabled) =>
+      toast.success(enabled ? "Auto-Restart aktiviert" : "Auto-Restart deaktiviert"),
     onSettled: invalidate,
   });
 
-  const run = (action: LifecycleAction, confirmMsg?: string) => {
-    if (confirmMsg && !confirm(confirmMsg)) return;
+  const run = async (
+    action: LifecycleAction,
+    confirmOpts?: { message: string; danger?: boolean },
+  ) => {
+    if (confirmOpts && !(await confirmDialog({ ...confirmOpts, confirmLabel: "Fortfahren" }))) {
+      return;
+    }
     mutation.mutate(action);
   };
 
@@ -57,7 +75,11 @@ export function ServerActions({ server }: { server: ServerDto }) {
       )}
       {canStop && running && (
         <button
-          onClick={() => run("stop", `Server „${server.name}" stoppen?`)}
+          onClick={() =>
+            void run("stop", {
+              message: `Server „${server.name}" wirklich stoppen? Aktive Spieler werden getrennt.`,
+            })
+          }
           disabled={busy}
           className={`${base} border-neutral-700 text-neutral-200 hover:bg-neutral-800`}
         >
@@ -66,7 +88,9 @@ export function ServerActions({ server }: { server: ServerDto }) {
       )}
       {isDocker && running && (
         <button
-          onClick={() => run("restart", `Server „${server.name}" neu starten?`)}
+          onClick={() =>
+            void run("restart", { message: `Server „${server.name}" neu starten?` })
+          }
           disabled={busy}
           className={`${base} border-neutral-700 text-neutral-200 hover:bg-neutral-800`}
         >
@@ -76,7 +100,10 @@ export function ServerActions({ server }: { server: ServerDto }) {
       {isDocker && running && (
         <button
           onClick={() =>
-            run("kill", `Server „${server.name}" hart killen? (Datenverlust möglich)`)
+            void run("kill", {
+              message: `Server „${server.name}" hart killen? Der Container wird sofort beendet — Datenverlust möglich.`,
+              danger: true,
+            })
           }
           disabled={busy}
           className={`${base} border-status-error/40 text-status-error hover:bg-status-error/10`}

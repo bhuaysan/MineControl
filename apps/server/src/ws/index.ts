@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createDockerAdapter } from "../adapters/registry.js";
 import { resolveSessionUser } from "../auth.js";
 import { prisma } from "../db.js";
+import { logger } from "../logger.js";
 import { TPS_EDITIONS, parseTps } from "../modules/metrics/tps.js";
 import { listServerDtos, toServerDto } from "../modules/servers/service.js";
 
@@ -127,8 +128,13 @@ class ManagedStream {
       } else {
         this.stop = stop;
       }
-    } catch {
+    } catch (err) {
       this.stop = null; // Container (noch) nicht bereit → später erneut.
+      // Nicht mehr stumm: Der erwartete Normalfall ist „Container läuft noch
+      // nicht" (reattach versucht es erneut). Ein dauerhaftes Scheitern (Rechte,
+      // Daemon) bliebe sonst unsichtbar — die Konsole wäre lautlos leer. Nur auf
+      // debug, weil pro Poll ein weiterer Versuch folgt (kein Alarm, nur Spur).
+      logger.debug({ err, serverId: this.serverId }, "Live-Stream-Attach fehlgeschlagen — späterer Versuch folgt");
     } finally {
       this.attaching = false;
     }
@@ -288,7 +294,7 @@ export async function broadcastServerStatus(serverId: string): Promise<void> {
       status: dto.status,
     });
   } catch (err) {
-    console.error("Status-Broadcast fehlgeschlagen:", err);
+    logger.error({ err, serverId }, "Status-Broadcast fehlgeschlagen");
   }
 }
 
@@ -309,7 +315,7 @@ function startStatusPoller(intervalMs = 10_000): void {
         });
       }
     } catch (err) {
-      console.error("Status-Poller fehlgeschlagen:", err);
+      logger.error({ err }, "Status-Poller fehlgeschlagen");
     }
   }, intervalMs);
 }

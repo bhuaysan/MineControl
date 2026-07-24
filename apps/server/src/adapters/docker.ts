@@ -7,6 +7,7 @@ import type {
   ServerEdition,
   ServerStatus,
 } from "@minecontrol/shared";
+import { logger } from "../logger.js";
 import { ExternalAdapter, type PersistentRcon } from "./external.js";
 import {
   containerName,
@@ -140,7 +141,7 @@ export class DockerAdapter implements ServerAdapter {
       };
     } catch (err) {
       if ((err as { statusCode?: number }).statusCode === 404) return "not_found";
-      console.error(`Docker-inspect fehlgeschlagen (${this.serverId}):`, err);
+      logger.error({ err, serverId: this.serverId }, "Docker-inspect fehlgeschlagen");
       return "error";
     }
   }
@@ -302,7 +303,13 @@ export class DockerAdapter implements ServerAdapter {
     try {
       const raw = (await this.container().stats({ stream: false })) as unknown;
       return parseStats(raw as DockerStatsJson);
-    } catch {
+    } catch (err) {
+      // Best effort (Metrik), aber nicht mehr komplett stumm: Bei einer echten
+      // Störung (Daemon weg, Rechte) blieben die Metriken sonst spurlos leer.
+      // 404 (Container existiert (noch) nicht) ist der erwartete Normalfall —
+      // den nur auf debug, damit das Log bei gestoppten Servern nicht spammt.
+      const level = (err as { statusCode?: number }).statusCode === 404 ? "debug" : "warn";
+      logger[level]({ err, serverId: this.serverId }, "Docker-Stats-Sample fehlgeschlagen");
       return null;
     }
   }
