@@ -1,5 +1,8 @@
 # MineControl
 
+[![CI](https://github.com/bhuaysan/MineControl/actions/workflows/ci.yml/badge.svg)](https://github.com/bhuaysan/MineControl/actions/workflows/ci.yml)
+[![Release](https://github.com/bhuaysan/MineControl/actions/workflows/release.yml/badge.svg)](https://github.com/bhuaysan/MineControl/actions/workflows/release.yml)
+
 Webbasiertes Verwaltungstool für Minecraft-Server (Java Edition) — verwaltet
 **selbst erstellte Docker-Server** und **bereits laufende externe Server** in einer
 Oberfläche.
