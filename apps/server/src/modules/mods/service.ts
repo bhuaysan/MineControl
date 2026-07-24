@@ -1,5 +1,8 @@
 import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import { lookup as dnsLookup } from "node:dns";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { isIP, type LookupFunction } from "node:net";
 import { posix } from "node:path";
 import type { Server } from "@prisma/client";
 import * as tar from "tar-stream";
@@ -344,28 +347,112 @@ export async function installJarFromUrl(server: Server, urlStr: string): Promise
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new ModInputError("Nur http/https erlaubt");
   }
+  // Früh-Abbruch mit klarer Meldung; die eigentliche, TOCTOU-sichere Absicherung
+  // ist der Connect-Zeit-`lookup` in downloadJarSsrfSafe.
   await assertPublicHost(url.hostname);
 
-  // redirect: "error" → kein Redirect-basiertes SSRF-Bypass auf interne Ziele.
-  const res = await fetch(url, {
-    headers: { "User-Agent": USER_AGENT },
-    redirect: "error",
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!res.ok || !res.body) throw new Error(`Download fehlgeschlagen (${res.status})`);
-  const data = await readCapped(res.body, config.modsMaxBytes);
+  const { body: data, contentDisposition } = await downloadJarSsrfSafe(url);
   if (!looksLikeJar(data)) throw new ModInputError("Antwort ist keine .jar (ZIP-Signatur fehlt)");
 
-  const filename = filenameFromResponse(url, res);
+  const filename = filenameFromResponse(url, contentDisposition);
   if (!JAR_NAME_RE.test(filename)) throw new ModInputError("Kein gültiger Jar-Dateiname ableitbar");
   await putJar(server.id, info.folder, filename, data);
   await recordProvenance(server.id, filename, "url");
   return filename;
 }
 
+/**
+ * Lädt eine Jar von einer öffentlichen URL und pinnt die zum Verbindungsaufbau
+ * verwendete IP: Der `lookup` validiert JEDE aufgelöste Adresse zum Connect-
+ * Zeitpunkt gegen die SSRF-Blockliste. Damit schließt sich die DNS-Rebinding-
+ * Lücke — `assertPublicHost` prüft nur eine frühere, separate Auflösung; ein
+ * Name mit niedriger TTL könnte zwischen Prüfung und Download auf eine interne
+ * IP (z. B. 169.254.169.254) umschwenken. Redirects werden nicht gefolgt
+ * (Node folgt 3xx von sich aus nicht; sie werden hier als Fehler behandelt) —
+ * so kann eine Weiterleitung nicht die IP-Prüfung umgehen.
+ */
+function downloadJarSsrfSafe(
+  url: URL,
+): Promise<{ body: Buffer; contentDisposition: string | null }> {
+  // net.LookupFunction typisiert `address` als string; bei `all: true` liefert
+  // dns.lookup ein Array — beide Formen werden defensiv geprüft.
+  const validatingLookup: LookupFunction = (hostname, options, callback) => {
+    (dnsLookup as (h: string, o: unknown, cb: unknown) => void)(
+      hostname,
+      options,
+      (err: NodeJS.ErrnoException | null, address: string | { address: string }[], family: number) => {
+        if (err) return callback(err, address as string, family);
+        const addresses = Array.isArray(address) ? address : [{ address }];
+        for (const a of addresses) {
+          if (isBlockedIp(a.address)) {
+            return callback(
+              new ModInputError(
+                "Ziel-Host löst auf eine nicht erlaubte IP auf (privat/lokal/Metadaten)",
+              ),
+              "",
+              0,
+            );
+          }
+        }
+        callback(null, address as string, family);
+      },
+    );
+  };
+
+  const requestFn = url.protocol === "https:" ? httpsRequest : httpRequest;
+  const cap = config.modsMaxBytes;
+
+  return new Promise((resolve, reject) => {
+    const req = requestFn(
+      url,
+      {
+        method: "GET",
+        headers: { "User-Agent": USER_AGENT },
+        lookup: validatingLookup,
+        timeout: 60_000,
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        if (status >= 300 && status < 400) {
+          res.destroy();
+          reject(new ModInputError("Weiterleitungen sind nicht erlaubt"));
+          return;
+        }
+        if (status !== 200) {
+          res.destroy();
+          reject(new Error(`Download fehlgeschlagen (${status})`));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        let total = 0;
+        res.on("data", (c: Buffer) => {
+          total += c.length;
+          if (total > cap) {
+            res.destroy();
+            reject(new ModInputError("Datei zu groß"));
+            return;
+          }
+          chunks.push(c);
+        });
+        res.on("end", () => {
+          const cd = res.headers["content-disposition"];
+          resolve({
+            body: Buffer.concat(chunks),
+            contentDisposition: (Array.isArray(cd) ? cd[0] : cd) ?? null,
+          });
+        });
+        res.on("error", reject);
+      },
+    );
+    req.on("error", reject);
+    req.on("timeout", () => req.destroy(new ModInputError("Zeitüberschreitung beim Download")));
+    req.end();
+  });
+}
+
 /** Leitet den Dateinamen aus Content-Disposition bzw. dem URL-Pfad ab. */
-function filenameFromResponse(url: URL, res: Response): string {
-  const cd = res.headers.get("content-disposition");
+function filenameFromResponse(url: URL, contentDisposition: string | null): string {
+  const cd = contentDisposition;
   const match = cd && /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
   const raw = match ? decodeURIComponent(match[1]!) : posix.basename(url.pathname);
   const base = posix.basename(raw);

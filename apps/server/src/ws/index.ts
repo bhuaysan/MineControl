@@ -23,6 +23,15 @@ const TOPIC_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 /** Höchstzahl gleichzeitiger Abos pro Verbindung — begrenzt Speicher-/Stream-Verbrauch. */
 const MAX_TOPICS_PER_CONNECTION = 20;
 
+/**
+ * Wie oft eine offene WS-Verbindung erneut gegen den aktuellen DB-Zustand geprüft
+ * wird. Anders als HTTP-Routen (Prüfung je Request) authentifiziert der WS nur
+ * einmal beim Handshake — ohne diese Wiederholung überlebte ein offener Socket
+ * eine Session-Widerrufung (sessionVersion) oder Rollen-Degradierung bis zum
+ * Trennen und streamte weiter Konsolen-/Metrik-Daten.
+ */
+const REVALIDATE_INTERVAL_MS = 30_000;
+
 const topicSchema = z
   .string()
   .refine(
@@ -320,6 +329,32 @@ export async function registerWebsocket(app: FastifyInstance): Promise<void> {
     const conn: Connection = { socket, role: user.role, topics: new Set() };
     connections.add(conn);
 
+    // Periodische Re-Validierung: dieselbe Cookie-Auflösung wie beim Handshake,
+    // aber gegen den AKTUELLEN DB-Zustand. Ist die Sitzung weg/widerrufen, wird
+    // getrennt; wurde die Rolle degradiert, werden nicht mehr gedeckte Abos
+    // (z. B. Konsole nach Verlust von MODERATOR) freigegeben.
+    const revalidate = setInterval(() => {
+      void (async () => {
+        const current = await resolveSessionUser(request).catch(() => null);
+        if (!current) {
+          send(socket, { type: "error", message: "Sitzung ungültig oder widerrufen" });
+          socket.close();
+          return;
+        }
+        conn.role = current.role;
+        for (const topic of [...conn.topics]) {
+          if (!canSubscribe(conn.role, topic)) {
+            conn.topics.delete(topic);
+            onUnsubscribe(topic);
+            send(socket, { type: "error", message: "Berechtigung für ein Abo entzogen" });
+          }
+        }
+      })();
+    }, REVALIDATE_INTERVAL_MS);
+    // Hält den Prozess nicht künstlich am Leben (analog index.ts) — beim
+    // Schließen der Verbindung wird der Timer ohnehin aufgeräumt.
+    revalidate.unref();
+
     socket.on("message", (data: Buffer) => {
       const msg = parseClientMessage(data);
       if (!msg) return; // Unbekannte/ungültige Nachricht — ignorieren statt crashen.
@@ -342,6 +377,7 @@ export async function registerWebsocket(app: FastifyInstance): Promise<void> {
     });
 
     socket.on("close", () => {
+      clearInterval(revalidate);
       connections.delete(conn);
       // Alle Abos dieser Verbindung freigeben (Streams ggf. abbauen).
       for (const topic of conn.topics) onUnsubscribe(topic);
