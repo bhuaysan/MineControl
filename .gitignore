@@ -19,11 +19,14 @@ build/
 logs/
 *.log
 
-# Server-Backups (Laufzeitdaten)
-backups/
+# Server-Backups (Laufzeitdaten) — verankert, damit die Regel nicht das
+# Quellmodul apps/server/src/modules/backups/ mitschluckt.
+/backups/
+/apps/server/backups/
 
 # Server-Import-Archive (Laufzeitdaten)
-imports/
+/imports/
+/apps/server/imports/
 
 # Editor / OS
 .idea/
