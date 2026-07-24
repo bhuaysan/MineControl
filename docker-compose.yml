@@ -16,12 +16,15 @@
 
 services:
   app:
+    # Standard: vorgebautes Multi-Arch-Image aus GHCR (`docker compose pull`).
+    # Der `build:`-Block bleibt als Fallback für lokale Builds erhalten
+    # (`docker compose up -d --build`). Version pinnen via MC_IMAGE_TAG in .env.
+    image: ghcr.io/bhuaysan/minecontrol-app:${MC_IMAGE_TAG:-latest}
     build:
       context: .
       target: runtime
       # Build über das Host-Netz (zuverlässiger Paket-/Registry-Zugriff).
       network: host
-    image: minecontrol-app:latest
     restart: unless-stopped
     network_mode: host
     environment:
@@ -49,11 +52,11 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
   web:
+    image: ghcr.io/bhuaysan/minecontrol-web:${MC_IMAGE_TAG:-latest}
     build:
       context: .
       target: web
       network: host
-    image: minecontrol-web:latest
     restart: unless-stopped
     network_mode: host
     depends_on:

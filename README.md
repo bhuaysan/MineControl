@@ -63,12 +63,12 @@ Standard-Login (aus `.env`): `admin` / `changeme` — **nach dem ersten Start ä
 
 ## Nützliche Skripte
 
-| Befehl | Wirkung |
-|---|---|
-| `pnpm build` | Alle Pakete bauen (topologisch) |
-| `pnpm typecheck` | TypeScript über alle Pakete prüfen |
-| `pnpm db:migrate` | Prisma-Migration + Seed |
-| `pnpm --filter @minecontrol/server db:studio` | Prisma Studio |
+| Befehl                                        | Wirkung                            |
+| --------------------------------------------- | ---------------------------------- |
+| `pnpm build`                                  | Alle Pakete bauen (topologisch)    |
+| `pnpm typecheck`                              | TypeScript über alle Pakete prüfen |
+| `pnpm db:migrate`                             | Prisma-Migration + Seed            |
+| `pnpm --filter @minecontrol/server db:studio` | Prisma Studio                      |
 
 ## Deployment (Produktivbetrieb)
 
@@ -84,12 +84,26 @@ sed -i "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=\"$(openssl rand -hex 32)\"|" .env
 # SEED_ADMIN_PASSWORD in .env eintragen (Erststart-Admin).
 # Für eine öffentliche Domain zusätzlich MC_SITE_ADDRESS=mc.example.com setzen.
 
-# 2. Bauen und starten
-docker compose up -d --build
+# 2. Vorgebaute Images ziehen und starten (empfohlen)
+docker compose pull
+docker compose up -d
+# ODER lokal aus dem Quellcode bauen (Fallback):
+#   docker compose up -d --build
 
 # 3. Öffnen: https://<MC_SITE_ADDRESS>  (bei localhost: Browser-Warnung des
 #    selbstsignierten Zertifikats akzeptieren)
 ```
+
+Die Images werden von GitHub Actions (`.github/workflows/release.yml`) bei
+jedem Push auf `main` und bei Versions-Tags (`v*`) automatisch als **Multi-Arch**
+(amd64 + arm64) nach GHCR gebaut:
+`ghcr.io/bhuaysan/minecontrol-app` und `…/minecontrol-web`. `docker-compose.yml`
+zieht standardmäßig `:latest`; auf eine Version pinnen via `MC_IMAGE_TAG` in
+`.env` (z. B. `MC_IMAGE_TAG=1.2.0` oder `MC_IMAGE_TAG=sha-abc1234`).
+
+> **Paket-Sichtbarkeit:** GHCR-Pakete sind anfangs privat. Entweder in den
+> GitHub-Package-Einstellungen auf _public_ stellen, oder auf dem Server einmalig
+> `docker login ghcr.io` mit einem PAT (Scope `read:packages`) ausführen.
 
 Der `app`-Container wendet beim Start automatisch die DB-Migrationen an
 (`prisma migrate deploy`) und legt beim allerersten Start den Admin aus
@@ -108,8 +122,9 @@ Backups, Import-Staging) liegen im Named Volume `mc-data`.
   Umgebung betreiben, idealerweise im LAN/VPN.
 - **TLS-Pflicht:** Session-Cookies werden im Produktivbetrieb mit `Secure`
   gesetzt — der Zugriff muss über HTTPS erfolgen (das erledigt Caddy).
-- **Updates:** `git pull && docker compose up -d --build`. Migrationen laufen
-  beim Neustart automatisch.
+- **Updates:** `docker compose pull && docker compose up -d` zieht die neuesten
+  GHCR-Images und startet neu; Migrationen (`prisma migrate deploy`) laufen dabei
+  automatisch. Alternativ lokal bauen: `git pull && docker compose up -d --build`.
 
 ## Stand
 
