@@ -32,3 +32,13 @@ logs/
 .idea/
 .vscode/
 .DS_Store
+
+# Claude Code: persönliche/maschinenlokale Dateien (settings.json ohne
+# .local dürfte man bewusst als Team-Config committen — nur das Lokale raus).
+.claude/settings.local.json
+.claude/*.lock
+
+# Interne Planungs-/Arbeitsdokumente (nicht im öffentlichen Repo gewünscht,
+# lokal erhalten). Bewusst per git rm --cached entfernt.
+/PLANNING.md
+/TESTPLAN.md
