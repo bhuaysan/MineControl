@@ -161,8 +161,11 @@ export async function getNetworkDto(id: string): Promise<NetworkDto | null> {
 
 // ── Proxy-Konfiguration schreiben ──────────────────────────────────────────────
 
-/** Erzeugt die Proxy-Konfiguration aus dem aktuellen Mitgliederstand und spielt sie ein. */
-async function rewriteProxyConfig(networkId: string): Promise<void> {
+/** Erzeugt die Proxy-Konfiguration aus dem aktuellen Mitgliederstand und spielt sie ein.
+ * Exportiert, weil auch das direkte Löschen eines Subservers (servers/routes.ts)
+ * den Alias aus der Proxy-Config entfernen muss — sonst bleibt dort ein toter
+ * Backend-Eintrag stehen. */
+export async function rewriteProxyConfig(networkId: string): Promise<void> {
   // Das frische Neuladen des Netzes UND der Config-Write+Restart laufen unter
   // dem Proxy-Lock, damit zwei nebenläufige Netz-Änderungen weder eine veraltete
   // Mitgliederliste schreiben noch den Proxy doppelt/überlappend neu starten.
@@ -205,16 +208,31 @@ async function rewriteProxyConfig(networkId: string): Promise<void> {
 
 // ── Container mit korrektem online-mode-Env neu aufsetzen ──────────────────────
 
+/**
+ * Die beim Anlegen gespeicherten Wizard-Parameter eines Docker-Servers. Muss
+ * ALLE Felder abdecken, die `ProvisionParams` (servers/docker.ts) in Container-
+ * Env übersetzt — `reprovisionServer` erzeugt den Container daraus neu, und was
+ * hier fehlt, ist danach weg: ein fehlendes `modrinthModpack` ließe den Server
+ * als nackte Loader-Installation neu starten, ein fehlendes `difficulty`/
+ * `gamemode` würde von itzg beim Boot auf dessen Defaults (easy/survival)
+ * zurückgeschrieben.
+ */
 interface DockerCfg {
   edition: string;
   version: string;
   memoryMb: number;
   motd?: string;
   onlineMode: boolean;
+  seed?: string;
+  difficulty?: string;
+  gamemode?: string;
+  modrinthModpack?: string;
+  curseforgeModpack?: string;
 }
 
-/** Liest die im Server hinterlegten Wizard-Parameter (dockerConfig-JSON). */
-function parseDockerCfg(server: Server): DockerCfg {
+/** Liest die im Server hinterlegten Wizard-Parameter (dockerConfig-JSON).
+ * Exportiert (nur) für Unit-Tests — siehe networks/service.test.ts. */
+export function parseDockerCfg(server: Server): DockerCfg {
   let c: Record<string, unknown> = {};
   try {
     c = server.dockerConfig ? (JSON.parse(server.dockerConfig) as Record<string, unknown>) : {};
@@ -227,6 +245,11 @@ function parseDockerCfg(server: Server): DockerCfg {
     memoryMb: (c.memoryMb as number) ?? 2048,
     motd: c.motd as string | undefined,
     onlineMode: (c.onlineMode as boolean) ?? true,
+    seed: c.seed as string | undefined,
+    difficulty: c.difficulty as string | undefined,
+    gamemode: c.gamemode as string | undefined,
+    modrinthModpack: c.modrinthModpack as string | undefined,
+    curseforgeModpack: c.curseforgeModpack as string | undefined,
   };
 }
 
@@ -254,8 +277,16 @@ async function reprovisionServer(
     mcPort: server.port,
     rconHostPort,
     rconPassword,
+    // Alles außer `onlineMode` (und der Netz-Zugehörigkeit) unverändert aus der
+    // ursprünglichen Anlage übernehmen — der Container wird hier nur wegen des
+    // online-mode-Env neu erzeugt, nicht umkonfiguriert.
+    seed: cfg.seed,
+    difficulty: cfg.difficulty,
+    gamemode: cfg.gamemode,
     motd: cfg.motd,
     onlineMode: opts.onlineMode,
+    modrinthModpack: cfg.modrinthModpack,
+    curseforgeModpack: cfg.curseforgeModpack,
     networkName: opts.networkName,
     networkAlias: opts.networkAlias,
   });

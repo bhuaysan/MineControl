@@ -39,6 +39,7 @@ import {
 import { recordAudit } from "../audit/service.js";
 import { deleteAllBackups } from "../backups/service.js";
 import { suppressDownAlert } from "../metrics/service.js";
+import { rewriteProxyConfig } from "../networks/service.js";
 import { unscheduleTask } from "../tasks/service.js";
 import {
   destroyDockerServer,
@@ -564,9 +565,25 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
   app.delete("/api/servers/:id", { preHandler: requireRole("ADMIN") }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { keepWorld } = request.query as { keepWorld?: string };
-    const server = await prisma.server.findUnique({ where: { id } });
+    const server = await prisma.server.findUnique({
+      where: { id },
+      include: { proxyOf: { select: { name: true } } },
+    });
     if (!server) {
       return reply.code(404).send({ error: "not_found", message: "Server nicht gefunden" });
+    }
+    // Netzwerk-Proxy: Das Löschen dieser Zeile nimmt per `onDelete: Cascade`
+    // die Network-Zeile mit, wodurch alle Mitglieder ihr `networkId` verlieren
+    // (`onDelete: SetNull`) — ihre Container blieben aber umgebaut zurück
+    // (online-mode aus, Forwarding aktiv, verwaistes Docker-Netz), und ohne
+    // Network-Zeile könnte sie danach kein Detach mehr zurücksetzen. Der
+    // einzige konsistente Weg ist `DELETE /api/networks/:id` (deleteNetwork),
+    // das die Mitglieder vorher auf Standalone zurückbaut.
+    if (server.proxyOf) {
+      return reply.code(409).send({
+        error: "network_proxy",
+        message: `Dieser Server ist der Proxy des Netzwerks „${server.proxyOf.name}" und kann nicht einzeln gelöscht werden — bitte stattdessen das Netzwerk löschen.`,
+      });
     }
     if (server.type === "DOCKER") {
       detachServerStreams(server.id);
@@ -594,6 +611,22 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
     for (const task of tasks) unscheduleTask(task.id);
     await deleteAllBackups(id);
     await prisma.server.delete({ where: { id } });
+    // War der Server Mitglied eines Netzwerks, kennt der Proxy seinen Alias
+    // noch als Backend — Config aus dem (jetzt aktuellen) Mitgliederstand neu
+    // schreiben. Best effort: der Server ist bereits weg, ein Fehlschlag darf
+    // die Antwort nicht mehr umdrehen, wird aber festgehalten.
+    if (server.networkId) {
+      await rewriteProxyConfig(server.networkId).catch(async (err) => {
+        request.log.error(
+          { err, serverId: id, networkId: server.networkId },
+          "Proxy-Config nach dem Löschen eines Subservers nicht aktualisiert",
+        );
+        await recordAudit({
+          action: "network.proxy_config_stale",
+          details: { networkId: server.networkId, deletedServer: server.name, error: String(err) },
+        });
+      });
+    }
     await recordAudit({
       userId: request.user?.id,
       action: "server.delete",
