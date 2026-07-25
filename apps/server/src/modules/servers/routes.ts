@@ -113,26 +113,27 @@ const testSchema = z.object({
 });
 
 // Docker: RCON-Host-Port wird aus dem MC-Port abgeleitet → Port ≤ 55535.
-const createDockerSchema = z.object({
-  name: z.string().min(1).max(64),
-  edition: z.enum(DOCKER_EDITIONS),
-  version: z
-    .string()
-    .max(20)
-    .regex(/^(LATEST|SNAPSHOT|[0-9][0-9a-zA-Z.\-_]*)$/, "Ungültige Version")
-    .default("LATEST"),
-  memoryMb: z.number().int().min(512).max(32768),
-  port: z.number().int().min(1024).max(55535).default(25565),
-  seed: z.string().max(64).optional(),
-  difficulty: z.enum(DIFFICULTIES).optional(),
-  gamemode: z.enum(GAMEMODES).optional(),
-  motd: z.string().max(120).optional(),
-  onlineMode: z.boolean().default(false),
-  eula: z.literal(true),
-  modrinthModpack: z.string().max(200).optional(),
-  curseforgeModpack: z.string().max(300).optional(),
-  import: importSourceSchema.optional(),
-})
+const createDockerSchema = z
+  .object({
+    name: z.string().min(1).max(64),
+    edition: z.enum(DOCKER_EDITIONS),
+    version: z
+      .string()
+      .max(20)
+      .regex(/^(LATEST|SNAPSHOT|[0-9][0-9a-zA-Z.\-_]*)$/, "Ungültige Version")
+      .default("LATEST"),
+    memoryMb: z.number().int().min(512).max(32768),
+    port: z.number().int().min(1024).max(55535).default(25565),
+    seed: z.string().max(64).optional(),
+    difficulty: z.enum(DIFFICULTIES).optional(),
+    gamemode: z.enum(GAMEMODES).optional(),
+    motd: z.string().max(120).optional(),
+    onlineMode: z.boolean().default(false),
+    eula: z.literal(true),
+    modrinthModpack: z.string().max(200).optional(),
+    curseforgeModpack: z.string().max(300).optional(),
+    import: importSourceSchema.optional(),
+  })
   .refine((d) => !(d.modrinthModpack && d.curseforgeModpack), {
     message: "Nur ein Modpack (Modrinth ODER CurseForge) angeben",
     path: ["curseforgeModpack"],
@@ -151,7 +152,10 @@ const PROPERTY_KEY_REGEX = /^[A-Za-z0-9._-]+$/;
 const propertiesSchema = z.object({
   properties: z.record(
     z.string().regex(PROPERTY_KEY_REGEX, "Ungültiger Property-Name"),
-    z.string().max(200).refine((v) => !/[\r\n]/.test(v), "Wert darf keinen Zeilenumbruch enthalten"),
+    z
+      .string()
+      .max(200)
+      .refine((v) => !/[\r\n]/.test(v), "Wert darf keinen Zeilenumbruch enthalten"),
   ),
 });
 
@@ -167,11 +171,7 @@ const playerActionSchema = z.object({
 });
 
 /** Übersetzt eine Spieler-Aktion in den passenden Minecraft-Befehl. */
-function buildPlayerCommand(
-  action: PlayerAction,
-  name: string,
-  reason?: string,
-): string {
+function buildPlayerCommand(action: PlayerAction, name: string, reason?: string): string {
   const suffix = reason ? ` ${reason}` : "";
   switch (action) {
     case "kick":
@@ -222,8 +222,7 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
         host,
         port,
         edition: "UNKNOWN",
-        rcon:
-          rconPort && rconPassword ? { port: rconPort, password: rconPassword } : undefined,
+        rcon: rconPort && rconPassword ? { port: rconPort, password: rconPassword } : undefined,
       });
       const result: ConnectionTestResult = await adapter.testConnection();
       return reply.send(result);
@@ -262,122 +261,118 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // Docker-Server erstellen — nur Admin.
-  app.post(
-    "/api/servers/docker",
-    { preHandler: requireRole("ADMIN") },
-    async (request, reply) => {
-      const parsed = createDockerSchema.safeParse(request.body);
-      if (!parsed.success) {
-        return reply.code(400).send({ error: "bad_request", message: "Ungültige Eingabe" });
+  app.post("/api/servers/docker", { preHandler: requireRole("ADMIN") }, async (request, reply) => {
+    const parsed = createDockerSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "bad_request", message: "Ungültige Eingabe" });
+    }
+    const data = parsed.data;
+    const rconHostPort = data.port + 10000;
+
+    // Import-Quelle (falls angegeben) vor dem Anlegen zu einem Host-Pfad auflösen.
+    let importFilePath: string | undefined;
+    if (data.import) {
+      const resolved = await resolveImportPath(data.import);
+      if (!resolved) {
+        return reply
+          .code(400)
+          .send({ error: "import_not_found", message: "Import-Datei nicht gefunden" });
       }
-      const data = parsed.data;
-      const rconHostPort = data.port + 10000;
+      importFilePath = resolved;
+    }
 
-      // Import-Quelle (falls angegeben) vor dem Anlegen zu einem Host-Pfad auflösen.
-      let importFilePath: string | undefined;
-      if (data.import) {
-        const resolved = await resolveImportPath(data.import);
-        if (!resolved) {
-          return reply
-            .code(400)
-            .send({ error: "import_not_found", message: "Import-Datei nicht gefunden" });
-        }
-        importFilePath = resolved;
-      }
-
-      // Port-Prüfung + Anlage serialisiert (withPortLock): sonst könnten zwei
-      // nebenläufige Anfragen beide denselben Port als frei sehen (TOCTOU) —
-      // gilt prozessweit, auch gegen Netzwerk-/Subserver-Anlage (networks/service.ts).
-      const rconPassword = randomBytes(16).toString("hex");
-      let server;
-      try {
-        server = await withPortLock(async () => {
-          const clash = await prisma.server.findFirst({
-            where: {
-              OR: [
-                { port: data.port },
-                { port: rconHostPort },
-                { rconPort: data.port },
-                { rconPort: rconHostPort },
-              ],
-            },
-          });
-          if (clash) {
-            throw new PortInUseError(data.port);
-          }
-          // Zusätzlich die reale Hostbelegung prüfen — die DB kennt nur von
-          // MineControl verwaltete Server, nicht fremde Prozesse/Altlasten.
-          if ((await isHostPortBound(data.port)) || (await isHostPortBound(rconHostPort))) {
-            throw new PortInUseError(data.port);
-          }
-
-          return prisma.server.create({
-            data: {
-              name: data.name,
-              type: "DOCKER",
-              edition: data.edition,
-              host: "127.0.0.1",
-              port: data.port,
-              rconPort: rconHostPort,
-              rconPasswordEnc: encryptSecret(rconPassword),
-              dockerConfig: JSON.stringify({
-                edition: data.edition,
-                version: data.version,
-                memoryMb: data.memoryMb,
-                seed: data.seed,
-                difficulty: data.difficulty,
-                gamemode: data.gamemode,
-                motd: data.motd,
-                onlineMode: data.onlineMode,
-                modrinthModpack: data.modrinthModpack,
-                curseforgeModpack: data.curseforgeModpack,
-              }),
-            },
-          });
+    // Port-Prüfung + Anlage serialisiert (withPortLock): sonst könnten zwei
+    // nebenläufige Anfragen beide denselben Port als frei sehen (TOCTOU) —
+    // gilt prozessweit, auch gegen Netzwerk-/Subserver-Anlage (networks/service.ts).
+    const rconPassword = randomBytes(16).toString("hex");
+    let server;
+    try {
+      server = await withPortLock(async () => {
+        const clash = await prisma.server.findFirst({
+          where: {
+            OR: [
+              { port: data.port },
+              { port: rconHostPort },
+              { rconPort: data.port },
+              { rconPort: rconHostPort },
+            ],
+          },
         });
-      } catch (err) {
-        if (err instanceof PortInUseError) {
-          return reply
-            .code(409)
-            .send({ error: "port_in_use", message: `Port ${data.port} ist bereits belegt` });
+        if (clash) {
+          throw new PortInUseError(data.port);
         }
-        throw err;
+        // Zusätzlich die reale Hostbelegung prüfen — die DB kennt nur von
+        // MineControl verwaltete Server, nicht fremde Prozesse/Altlasten.
+        if ((await isHostPortBound(data.port)) || (await isHostPortBound(rconHostPort))) {
+          throw new PortInUseError(data.port);
+        }
+
+        return prisma.server.create({
+          data: {
+            name: data.name,
+            type: "DOCKER",
+            edition: data.edition,
+            host: "127.0.0.1",
+            port: data.port,
+            rconPort: rconHostPort,
+            rconPasswordEnc: encryptSecret(rconPassword),
+            dockerConfig: JSON.stringify({
+              edition: data.edition,
+              version: data.version,
+              memoryMb: data.memoryMb,
+              seed: data.seed,
+              difficulty: data.difficulty,
+              gamemode: data.gamemode,
+              motd: data.motd,
+              onlineMode: data.onlineMode,
+              modrinthModpack: data.modrinthModpack,
+              curseforgeModpack: data.curseforgeModpack,
+            }),
+          },
+        });
+      });
+    } catch (err) {
+      if (err instanceof PortInUseError) {
+        return reply
+          .code(409)
+          .send({ error: "port_in_use", message: `Port ${data.port} ist bereits belegt` });
       }
-      await recordAudit({
-        userId: request.user?.id,
-        serverId: server.id,
-        action: "server.create",
-        details: {
-          name: server.name,
-          type: "DOCKER",
-          edition: data.edition,
-          imported: Boolean(importFilePath),
-        },
-      });
-
-      // Provisionierung läuft asynchron; Fortschritt via WS-Konsole.
-      void provisionDockerServer(server, {
+      throw err;
+    }
+    await recordAudit({
+      userId: request.user?.id,
+      serverId: server.id,
+      action: "server.create",
+      details: {
+        name: server.name,
+        type: "DOCKER",
         edition: data.edition,
-        version: data.version,
-        memoryMb: data.memoryMb,
-        mcPort: data.port,
-        rconHostPort,
-        rconPassword,
-        seed: data.seed,
-        difficulty: data.difficulty,
-        gamemode: data.gamemode,
-        motd: data.motd,
-        onlineMode: data.onlineMode,
-        modrinthModpack: data.modrinthModpack,
-        curseforgeModpack: data.curseforgeModpack,
-        importFilePath,
-      }).catch((err) => {
-        request.log.error(err, "Docker-Provisionierung fehlgeschlagen");
-      });
+        imported: Boolean(importFilePath),
+      },
+    });
 
-      return reply.code(202).send(await toServerDto(server));
-    },
-  );
+    // Provisionierung läuft asynchron; Fortschritt via WS-Konsole.
+    void provisionDockerServer(server, {
+      edition: data.edition,
+      version: data.version,
+      memoryMb: data.memoryMb,
+      mcPort: data.port,
+      rconHostPort,
+      rconPassword,
+      seed: data.seed,
+      difficulty: data.difficulty,
+      gamemode: data.gamemode,
+      motd: data.motd,
+      onlineMode: data.onlineMode,
+      modrinthModpack: data.modrinthModpack,
+      curseforgeModpack: data.curseforgeModpack,
+      importFilePath,
+    }).catch((err) => {
+      request.log.error(err, "Docker-Provisionierung fehlgeschlagen");
+    });
+
+    return reply.code(202).send(await toServerDto(server));
+  });
 
   // Server-seitig bereitgestellte Import-Archive auflisten — nur Admin.
   app.get(
@@ -430,9 +425,7 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
         if (status === 413 || file.file.truncated) {
           return reply.code(413).send({ error: "too_large", message: "Datei zu groß" });
         }
-        return reply
-          .code(500)
-          .send({ error: "stage_failed", message: (err as Error).message });
+        return reply.code(500).send({ error: "stage_failed", message: (err as Error).message });
       }
       const { size } = await stat(target);
       const body: StageUploadResponse = { stagingId, sizeBytes: size };
@@ -568,50 +561,46 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // Server löschen — nur Admin. Bei Docker: Container + optional Welt entfernen.
-  app.delete(
-    "/api/servers/:id",
-    { preHandler: requireRole("ADMIN") },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-      const { keepWorld } = request.query as { keepWorld?: string };
-      const server = await prisma.server.findUnique({ where: { id } });
-      if (!server) {
-        return reply.code(404).send({ error: "not_found", message: "Server nicht gefunden" });
+  app.delete("/api/servers/:id", { preHandler: requireRole("ADMIN") }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { keepWorld } = request.query as { keepWorld?: string };
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) {
+      return reply.code(404).send({ error: "not_found", message: "Server nicht gefunden" });
+    }
+    if (server.type === "DOCKER") {
+      detachServerStreams(server.id);
+      try {
+        await destroyDockerServer(server, keepWorld === "true");
+      } catch (err) {
+        // Teardown fehlgeschlagen → DB-Zeile NICHT löschen, damit kein
+        // verwaister Container/Volume ohne Eintrag zurückbleibt und ein
+        // erneuter Löschversuch möglich bleibt.
+        request.log.error({ err, serverId: id }, "Docker-Teardown fehlgeschlagen");
+        return reply.code(502).send({
+          error: "docker_teardown_failed",
+          message:
+            "Container/Volume konnte nicht entfernt werden — Server wurde nicht gelöscht. Bitte erneut versuchen.",
+        });
       }
-      if (server.type === "DOCKER") {
-        detachServerStreams(server.id);
-        try {
-          await destroyDockerServer(server, keepWorld === "true");
-        } catch (err) {
-          // Teardown fehlgeschlagen → DB-Zeile NICHT löschen, damit kein
-          // verwaister Container/Volume ohne Eintrag zurückbleibt und ein
-          // erneuter Löschversuch möglich bleibt.
-          request.log.error({ err, serverId: id }, "Docker-Teardown fehlgeschlagen");
-          return reply.code(502).send({
-            error: "docker_teardown_failed",
-            message:
-              "Container/Volume konnte nicht entfernt werden — Server wurde nicht gelöscht. Bitte erneut versuchen.",
-          });
-        }
-      }
-      // Erst ab hier ist die Löschung sicher (Docker-Teardown ist durch, falls
-      // nötig) — Backups und Scheduler-Abmeldung sind irreversibel bzw. wirken
-      // sofort, dürfen also nicht vor einem möglichen Abbruch oben passieren.
-      const tasks = await prisma.scheduledTask.findMany({
-        where: { serverId: id },
-        select: { id: true },
-      });
-      for (const task of tasks) unscheduleTask(task.id);
-      await deleteAllBackups(id);
-      await prisma.server.delete({ where: { id } });
-      await recordAudit({
-        userId: request.user?.id,
-        action: "server.delete",
-        details: { name: server.name, keepWorld: keepWorld === "true" },
-      });
-      return reply.send({ ok: true });
-    },
-  );
+    }
+    // Erst ab hier ist die Löschung sicher (Docker-Teardown ist durch, falls
+    // nötig) — Backups und Scheduler-Abmeldung sind irreversibel bzw. wirken
+    // sofort, dürfen also nicht vor einem möglichen Abbruch oben passieren.
+    const tasks = await prisma.scheduledTask.findMany({
+      where: { serverId: id },
+      select: { id: true },
+    });
+    for (const task of tasks) unscheduleTask(task.id);
+    await deleteAllBackups(id);
+    await prisma.server.delete({ where: { id } });
+    await recordAudit({
+      userId: request.user?.id,
+      action: "server.delete",
+      details: { name: server.name, keepWorld: keepWorld === "true" },
+    });
+    return reply.send({ ok: true });
+  });
 
   // Online-Spieler (via RCON `list`, sonst Ping-Sample) — alle angemeldeten Nutzer.
   app.get("/api/servers/:id/players", async (request, reply) => {
@@ -648,9 +637,7 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
       }
       const adapter = createAdapter(server);
       try {
-        const response = await adapter.sendCommand(
-          buildPlayerCommand(action, name, reason),
-        );
+        const response = await adapter.sendCommand(buildPlayerCommand(action, name, reason));
         await recordAudit({
           userId: request.user?.id,
           serverId: server.id,
@@ -663,9 +650,7 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
         if (err instanceof UnsupportedOperationError) {
           return reply.code(422).send({ error: "unsupported", message: err.message });
         }
-        return reply
-          .code(502)
-          .send({ error: "rcon_failed", message: (err as Error).message });
+        return reply.code(502).send({ error: "rcon_failed", message: (err as Error).message });
       }
     },
   );
@@ -699,9 +684,7 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
         if (err instanceof UnsupportedOperationError) {
           return reply.code(422).send({ error: "unsupported", message: err.message });
         }
-        return reply
-          .code(502)
-          .send({ error: "rcon_failed", message: (err as Error).message });
+        return reply.code(502).send({ error: "rcon_failed", message: (err as Error).message });
       }
     },
   );

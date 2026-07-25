@@ -1,10 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Network, Server } from "@prisma/client";
-import type {
-  NetworkDto,
-  NetworkMemberDto,
-  ServerEdition,
-} from "@minecontrol/shared";
+import type { NetworkDto, NetworkMemberDto, ServerEdition } from "@minecontrol/shared";
 import { createAdapter, createDockerAdapter } from "../../adapters/registry.js";
 import {
   PROXY_DATA_DIR,
@@ -193,9 +189,7 @@ async function rewriteProxyConfig(networkId: string): Promise<void> {
     const content = isBungee
       ? renderBungeeConfig({ motd: fresh.proxyServer.name, backends })
       : renderVelocityToml({ motd: fresh.proxyServer.name, backends });
-    await putDataFiles(fresh.proxyServer.id, PROXY_DATA_DIR, [
-      { name: filename, content },
-    ]);
+    await putDataFiles(fresh.proxyServer.id, PROXY_DATA_DIR, [{ name: filename, content }]);
     // Weder Velocity noch BungeeCord haben eine zuverlässige Hot-Reload ohne
     // Plugin → Proxy neu starten.
     suppressDownAlert(fresh.proxyServer.id);
@@ -298,9 +292,7 @@ async function configurePaperVelocity(
   }
   const { content, patched } = patchPaperVelocity(raw, secret, enabled);
   if (patched) {
-    await putDataFiles(server.id, "/data/config", [
-      { name: "paper-global.yml", content },
-    ]);
+    await putDataFiles(server.id, "/data/config", [{ name: "paper-global.yml", content }]);
   } else {
     pushConsoleLine(server.id, "! Velocity-Block in paper-global.yml nicht gefunden.");
   }
@@ -340,7 +332,10 @@ async function configureSpigotBungee(server: Server, enabled: boolean): Promise<
     }
   }
   if (!raw) {
-    pushConsoleLine(server.id, "! spigot.yml nicht gefunden — BungeeCord-Forwarding nicht gesetzt.");
+    pushConsoleLine(
+      server.id,
+      "! spigot.yml nicht gefunden — BungeeCord-Forwarding nicht gesetzt.",
+    );
     return;
   }
   const { content, patched } = patchSpigotBungee(raw, enabled);
@@ -695,10 +690,7 @@ export async function createSubserver(
 
 // ── Subserver lösen ─────────────────────────────────────────────────────────────
 
-export async function detachSubserver(
-  networkId: string,
-  serverId: string,
-): Promise<void> {
+export async function detachSubserver(networkId: string, serverId: string): Promise<void> {
   const network = await loadNetwork(networkId);
   const server = network.members.find((m) => m.id === serverId);
   if (!server) {
