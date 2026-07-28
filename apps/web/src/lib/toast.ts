@@ -73,8 +73,3 @@ export function errorMessage(err: unknown, fallback?: string): string {
   if (err instanceof Error && err.message) return err.message;
   return fb;
 }
-
-/** Zeigt einen Fehler-Toast aus einem beliebigen Fehlerobjekt. */
-export function toastError(err: unknown, fallback?: string): void {
-  toast.error(errorMessage(err, fallback));
-}

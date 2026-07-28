@@ -63,21 +63,12 @@ function hotp(secretB32: string, counter: number): string {
   return (bin % 10 ** DIGITS).toString().padStart(DIGITS, "0");
 }
 
-/** Berechnet den aktuellen TOTP-Code (v. a. für Tests). */
-export function currentToken(secretB32: string, atMs = Date.now()): string {
-  return hotp(secretB32, Math.floor(atMs / 1000 / STEP_SECONDS));
-}
-
 /**
  * Prüft einen Code gegen das Secret (±`window` Schritte Toleranz) und liefert
  * bei Erfolg den akzeptierten Zeitschritt (Counter), sonst `null`. Der Counter
  * erlaubt dem Aufrufer, einen bereits verbrauchten Code abzulehnen (Replay).
  */
-export function verifyToken(
-  secretB32: string,
-  token: string,
-  window = 1,
-): number | null {
+export function verifyToken(secretB32: string, token: string, window = 1): number | null {
   const cleaned = token.replace(/\s/g, "");
   if (!/^\d{6}$/.test(cleaned)) return null;
   const counter = Math.floor(Date.now() / 1000 / STEP_SECONDS);
@@ -91,11 +82,7 @@ export function verifyToken(
 }
 
 /** otpauth://-URI für QR-Code / manuellen Import. */
-export function otpauthUri(
-  secretB32: string,
-  account: string,
-  issuer = "MineControl",
-): string {
+export function otpauthUri(secretB32: string, account: string, issuer = "MineControl"): string {
   const label = encodeURIComponent(`${issuer}:${account}`);
   const params = new URLSearchParams({
     secret: secretB32,

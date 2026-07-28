@@ -67,34 +67,12 @@ export async function ensureDockerNetwork(name: string): Promise<void> {
   });
 }
 
-/** Verbindet einen Container (per Name) mit dem Netzwerk; optional mit Alias. */
-export async function connectToNetwork(
-  name: string,
-  container: string,
-  alias?: string,
-): Promise<void> {
-  try {
-    await docker.getNetwork(name).connect({
-      Container: container,
-      EndpointConfig: alias ? { Aliases: [alias] } : {},
-    });
-  } catch (err) {
-    // Bereits verbunden → ok.
-    if (!/already |endpoint with name/i.test((err as Error).message)) throw err;
-  }
-}
-
-/** Trennt einen Container vom Netzwerk (Force, falls verbunden). */
-export async function disconnectFromNetwork(
-  name: string,
-  container: string,
-): Promise<void> {
-  try {
-    await docker.getNetwork(name).disconnect({ Container: container, Force: true });
-  } catch {
-    /* Nicht verbunden / Netzwerk weg — ok. */
-  }
-}
+// Hinweis: Container werden NICHT nachträglich per network connect/disconnect
+// umgehängt. Die Netzwerk-Zugehörigkeit steckt im Container-Env bzw. in der
+// NetworkingConfig, weshalb networks/service.ts den Container über
+// `reprovisionServer` komplett neu erzeugt (online-mode muss dabei ohnehin
+// mitwandern). Frühere `connectToNetwork`/`disconnectFromNetwork`-Helfer waren
+// deshalb ungenutzt und wurden entfernt.
 
 /** Entfernt das Docker-Netzwerk (ignoriert „existiert nicht"). */
 export async function removeDockerNetwork(name: string): Promise<void> {

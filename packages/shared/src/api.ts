@@ -60,11 +60,6 @@ export interface ServerDto {
   provisionError?: string;
 }
 
-/** Auto-Restart für einen Server ein-/ausschalten. */
-export interface SetAutoRestartRequest {
-  enabled: boolean;
-}
-
 /** Anlage eines externen Servers (Phase 1). */
 export interface CreateExternalServerRequest {
   name: string;
@@ -154,37 +149,10 @@ export type LifecycleAction = (typeof LIFECYCLE_ACTIONS)[number];
 /** server.properties als Schlüssel/Wert-Paare (nur Docker). */
 export type ServerPropertiesDto = Record<string, string>;
 
-/** Teilmenge der zu speichernden server.properties-Schlüssel. */
-export interface UpdateServerPropertiesRequest {
-  properties: Record<string, string>;
-}
-
-/** Fürs Formular kuratierte, editierbare server.properties-Schlüssel. */
-export const EDITABLE_PROPERTIES = [
-  "motd",
-  "difficulty",
-  "gamemode",
-  "max-players",
-  "pvp",
-  "online-mode",
-  "view-distance",
-  "simulation-distance",
-  "spawn-protection",
-  "allow-nether",
-  "allow-flight",
-  "white-list",
-  "enforce-whitelist",
-  "hardcore",
-] as const;
-
 /** Ergebnis eines Verbindungstests im Wizard. */
 export interface ConnectionTestResult {
   ping: { ok: boolean; latencyMs?: number; error?: string };
   rcon?: { ok: boolean; error?: string };
-}
-
-export interface SendCommandRequest {
-  command: string;
 }
 
 export interface SendCommandResponse {
@@ -397,27 +365,6 @@ export interface InstalledModDto {
   source?: string;
 }
 
-export interface InstallModRequest {
-  projectId: string;
-  /** Optional feste Version; sonst wird die neueste kompatible gewählt. */
-  versionId?: string;
-}
-
-export interface InstallModResponse {
-  filename: string;
-}
-
-/** Installation einer eigenen Plugin-/Mod-Jar von einer URL. */
-export interface InstallFromUrlRequest {
-  url: string;
-}
-
-/** Plugin/Mod (de)aktivieren (Umbenennen .jar ↔ .jar.disabled). */
-export interface ToggleModRequest {
-  file: string;
-  enabled: boolean;
-}
-
 /** Update-Status eines Modrinth-installierten Plugins. */
 export interface PluginUpdateDto {
   fileName: string;
@@ -482,10 +429,6 @@ export interface PlayerProfileDto {
   currentServerId?: string;
   recentSessions: PlayerSessionDto[];
   history: PlayerHistoryEntryDto[];
-}
-
-export interface UpdatePlayerNotesRequest {
-  notes: string;
 }
 
 /** Ein Eintrag im Audit-Log. */
@@ -608,10 +551,6 @@ export interface WorldListResponse {
 /** Regeln für Weltnamen (ein Pfadsegment, keine Sonderzeichen). */
 export const WORLD_NAME_REGEX = /^[A-Za-z0-9_.-]{1,48}$/;
 
-export interface SwitchWorldRequest {
-  name: string;
-}
-
 export interface CreateWorldRequest {
   name: string;
   /** Optionaler Seed; leer = zufällig. */
@@ -693,29 +632,9 @@ export interface LpUserDto {
   permissions: LpNodeDto[];
 }
 
-export interface LpCreateGroupRequest {
-  name: string;
-}
-
-/** Setzt einen Node (value) — Weglassen von value + DELETE entfernt ihn. */
-export interface LpSetPermissionRequest {
-  node: string;
-  value: boolean;
-}
-
 /** Setzt Meta-Werte einer Gruppe (nur gesetzte Felder werden angewandt). */
 export interface LpSetMetaRequest {
   prefix?: string;
   suffix?: string;
   weight?: number;
-}
-
-export interface LpUserGroupRequest {
-  group: string;
-}
-
-/** Generische Fehlerantwort der API. */
-export interface ApiError {
-  error: string;
-  message: string;
 }
