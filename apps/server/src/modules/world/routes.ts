@@ -1,3 +1,4 @@
+import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 import type { Server } from "@prisma/client";
 import { WORLD_NAME_REGEX } from "@minecontrol/shared";
@@ -30,10 +31,7 @@ const pregenSchema = z.object({
   world: nameSchema.optional(),
 });
 
-async function loadDockerServer(
-  id: string,
-  reply: FastifyReply,
-): Promise<Server | null> {
+async function loadDockerServer(id: string, reply: FastifyReply): Promise<Server | null> {
   const server = await prisma.server.findUnique({ where: { id } });
   if (!server) {
     void reply.code(404).send({ error: "not_found", message: "Server nicht gefunden" });
@@ -50,9 +48,7 @@ function fail(reply: FastifyReply, err: unknown): FastifyReply {
   if (err instanceof WorldError) {
     return reply.code(err.status).send({ error: err.code, message: err.message });
   }
-  return reply
-    .code(502)
-    .send({ error: "world_failed", message: (err as Error).message });
+  return reply.code(502).send({ error: "world_failed", message: (err as Error).message });
 }
 
 export async function worldRoutes(app: FastifyInstance): Promise<void> {
@@ -260,11 +256,20 @@ export async function worldRoutes(app: FastifyInstance): Promise<void> {
         details: { level },
       });
 
-      // getArchive-Tar direkt durch gzip an die Antwort streamen (wie beim Backup).
+      // getArchive-Tar durch gzip an die Antwort streamen (wie beim Backup).
+      // pipeline() statt archive.pipe(gzip): Fastify hängt seinen Fehler-Handler
+      // nur an den gesendeten Stream (gzip), nicht an die Docker-Quelle — mit
+      // `.pipe()` wäre ein Abbruch der Quelle ein unbehandeltes 'error'-Event und
+      // hätte den Prozess beendet (siehe adapters/tarStream.ts). pipeline()
+      // zerstört gzip mit demselben Fehler, den Fastify dann sieht.
+      const gzip = createGzip();
+      void pipeline(archive, gzip).catch((err: unknown) => {
+        request.log.error({ err, serverId: server.id }, "Welt-Download abgebrochen");
+      });
       return reply
         .header("Content-Disposition", `attachment; filename="${server.name}-${level}.tar.gz"`)
         .type("application/gzip")
-        .send(archive.pipe(createGzip()));
+        .send(gzip);
     },
   );
 }

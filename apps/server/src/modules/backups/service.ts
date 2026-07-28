@@ -129,12 +129,23 @@ export async function restoreBackup(server: Server, backupId: string): Promise<v
 
   // Der Neustart muss in jedem Fall versucht werden — sonst bleibt ein vorher
   // laufender Server offline, wenn Dekompression/putArchive fehlschlägt.
+  //
+  // pipeline() statt createReadStream(…).pipe(gunzip): `.pipe()` leitet einen
+  // Lesefehler (Backup-Datei gelöscht, Mount weg) NICHT an gunzip weiter — er
+  // wäre ein unbehandeltes 'error'-Event und hätte den ganzen Prozess beendet
+  // (index.ts → uncaughtException → Shutdown). Über pipeline() bekommt gunzip
+  // den Fehler, und docker-modem bricht den putArchive-Request daraufhin ab
+  // (es hängt an den Body-Stream einen eigenen error-Handler) → putArchive
+  // lehnt ab und der Aufrufer sieht einen normalen 500er.
+  const gunzip = createGunzip();
+  const decompress = pipeline(createReadStream(backup.path), gunzip).catch(() => {
+    /* Wird über die Ablehnung von putArchive gemeldet (s. o.) — hier nur
+       abgefangen, damit es keine unhandled Rejection ist. */
+  });
   try {
     // gunzip → putArchive nach „/" (Tar-Einträge sind mit `data/` präfixiert).
-    await container.putArchive(
-      createReadStream(backup.path).pipe(createGunzip()),
-      { path: "/" },
-    );
+    await container.putArchive(gunzip, { path: "/" });
+    await decompress;
   } finally {
     if (wasRunning) await container.start();
   }

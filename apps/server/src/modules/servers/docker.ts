@@ -19,11 +19,8 @@ import {
   docker,
 } from "../../adapters/dockerClient.js";
 import { createDockerAdapter } from "../../adapters/registry.js";
-import {
-  broadcastServerStatus,
-  pushConsoleLine,
-  reattachServerStreams,
-} from "../../ws/index.js";
+import { readTarSingleFile } from "../../adapters/tarStream.js";
+import { broadcastServerStatus, pushConsoleLine, reattachServerStreams } from "../../ws/index.js";
 
 /** Parameter zum Erstellen eines Docker-Servers (RCON-Passwort im Klartext). */
 export interface ProvisionParams {
@@ -230,10 +227,7 @@ async function cleanupStagedImport(filePath: string): Promise<void> {
 }
 
 /** Stoppt (falls nötig) und entfernt Container + optional das Weltdaten-Volume. */
-export async function destroyDockerServer(
-  server: Server,
-  keepWorld: boolean,
-): Promise<void> {
+export async function destroyDockerServer(server: Server, keepWorld: boolean): Promise<void> {
   const container = docker.getContainer(containerName(server.id));
   try {
     await container.remove({ force: true, v: false });
@@ -257,19 +251,8 @@ export async function destroyDockerServer(
 // ── server.properties (nur Docker) ───────────────────────────────────────────
 
 /** Liest eine einzelne Datei aus einem getArchive-Tar-Stream als Text. */
-function extractSingleFile(stream: NodeJS.ReadableStream): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const extract = tar.extract();
-    let content = "";
-    extract.on("entry", (_header, entryStream, next) => {
-      entryStream.on("data", (c: Buffer) => (content += c.toString("utf8")));
-      entryStream.on("end", next);
-      entryStream.resume();
-    });
-    extract.on("finish", () => resolve(content));
-    extract.on("error", reject);
-    stream.pipe(extract);
-  });
+async function extractSingleFile(stream: NodeJS.ReadableStream): Promise<string> {
+  return (await readTarSingleFile(stream)).toString("utf8");
 }
 
 /** Parst `key=value`-Zeilen (Kommentare/Leerzeilen ignoriert). */
@@ -309,9 +292,7 @@ function mergeProperties(raw: string, changes: Record<string, string>): string {
  * ein anderer Fehler (Docker-/Tar-Störung) wird NICHT damit gleichgesetzt und
  * wirft weiter, sonst hielten Aufrufer eine transiente Störung fälschlich für
  * „Datei existiert nicht". */
-export async function readServerProperties(
-  server: Server,
-): Promise<Record<string, string>> {
+export async function readServerProperties(server: Server): Promise<Record<string, string>> {
   const container = docker.getContainer(containerName(server.id));
   try {
     const archive = await container.getArchive({ path: "/data/server.properties" });
@@ -354,17 +335,17 @@ export async function writeServerProperties(
  * Nur ein echtes 404 (Datei/Container fehlt) ergibt `null` — jede andere Störung
  * (Docker-/Tar-Fehler) wird geloggt und `null` zurückgegeben, statt sie stumm mit
  * „Datei fehlt" gleichzusetzen (wie {@link readServerProperties} 404 sauber trennt). */
-export async function readDataTextFile(
-  serverId: string,
-  path: string,
-): Promise<string | null> {
+export async function readDataTextFile(serverId: string, path: string): Promise<string | null> {
   const container = docker.getContainer(containerName(serverId));
   try {
     const archive = await container.getArchive({ path });
     return await extractSingleFile(archive);
   } catch (err) {
     if ((err as { statusCode?: number }).statusCode !== 404) {
-      logger.warn({ err, serverId, path }, "Datei aus Container-Volume konnte nicht gelesen werden");
+      logger.warn(
+        { err, serverId, path },
+        "Datei aus Container-Volume konnte nicht gelesen werden",
+      );
     }
     return null;
   }
@@ -382,10 +363,8 @@ export async function putDataFiles(
     await new Promise<void>((resolve, reject) => {
       // uid/gid = 1000: Dateien müssen dem Container-User gehören (siehe
       // writeServerProperties), sonst kann der Server sie nicht überschreiben.
-      pack.entry(
-        { name: f.name, uid: CONTAINER_UID, gid: CONTAINER_UID },
-        f.content,
-        (err) => (err ? reject(err) : resolve()),
+      pack.entry({ name: f.name, uid: CONTAINER_UID, gid: CONTAINER_UID }, f.content, (err) =>
+        err ? reject(err) : resolve(),
       );
     });
   }
@@ -412,10 +391,7 @@ export interface ProxyProvisionParams {
 }
 
 /** Erstellt (ohne Start) den Proxy-Container aus dem mc-proxy-Image. */
-async function createProxyContainer(
-  server: Server,
-  p: ProxyProvisionParams,
-): Promise<void> {
+async function createProxyContainer(server: Server, p: ProxyProvisionParams): Promise<void> {
   // mc-proxy: kein EULA/RCON; beide Proxy-Typen binden hier auf CONTAINER_MC_PORT.
   const env = [`TYPE=${p.proxyEdition}`, `MEMORY=${memoryArg(p.memoryMb)}`];
   if (p.proxyEdition === "VELOCITY") env.push(`VELOCITY_VERSION=${p.version}`);

@@ -1,6 +1,5 @@
 import { gunzipSync } from "node:zlib";
 import type { Server } from "@prisma/client";
-import * as tar from "tar-stream";
 import type {
   LpGroupDetailDto,
   LpGroupSummaryDto,
@@ -9,6 +8,7 @@ import type {
   LuckPermsStatusDto,
 } from "@minecontrol/shared";
 import { containerName, docker } from "../../adapters/dockerClient.js";
+import { readTarSingleFileOrNull } from "../../adapters/tarStream.js";
 import { logger } from "../../logger.js";
 import { createAdapter, createDockerAdapter } from "../../adapters/registry.js";
 import { suppressDownAlert } from "../metrics/service.js";
@@ -121,26 +121,20 @@ interface LpExport {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-/** Liest eine Datei aus dem Container-Volume binärsicher (getArchive → tar). */
-function readContainerFile(serverId: string, path: string): Promise<Buffer | null> {
+/** Liest eine Datei aus dem Container-Volume binärsicher (getArchive → tar).
+ * Lehnt bewusst NIE ab (löst im Fehlerfall mit `null` auf) — darauf verlässt sich
+ * der Poll-Loop in {@link readExport}, der sonst am Cleanup vorbeispringen könnte. */
+async function readContainerFile(serverId: string, path: string): Promise<Buffer | null> {
   const container = docker.getContainer(containerName(serverId));
-  return new Promise((resolve) => {
-    container
-      .getArchive({ path })
-      .then((archive) => {
-        const extract = tar.extract();
-        const chunks: Buffer[] = [];
-        extract.on("entry", (_header, stream, next) => {
-          stream.on("data", (c: Buffer) => chunks.push(c));
-          stream.on("end", next);
-          stream.resume();
-        });
-        extract.on("finish", () => resolve(chunks.length > 0 ? Buffer.concat(chunks) : null));
-        extract.on("error", () => resolve(null));
-        (archive as unknown as NodeJS.ReadableStream).pipe(extract);
-      })
-      .catch(() => resolve(null));
-  });
+  let archive: NodeJS.ReadableStream;
+  try {
+    archive = (await container.getArchive({ path })) as unknown as NodeJS.ReadableStream;
+  } catch {
+    return null; // Datei/Container nicht da — erwarteter Normalfall beim Pollen.
+  }
+  return readTarSingleFileOrNull(archive, (err) =>
+    logger.warn({ err, serverId, path }, "Datei aus Container-Volume konnte nicht gelesen werden"),
+  );
 }
 
 /**

@@ -1,18 +1,10 @@
 import type { Duplex, Readable } from "node:stream";
 import { PassThrough } from "node:stream";
 import type { Container } from "dockerode";
-import type {
-  Capability,
-  OnlinePlayer,
-  ServerEdition,
-  ServerStatus,
-} from "@minecontrol/shared";
+import type { Capability, OnlinePlayer, ServerEdition, ServerStatus } from "@minecontrol/shared";
 import { logger } from "../logger.js";
 import { ExternalAdapter, type PersistentRcon } from "./external.js";
-import {
-  containerName,
-  docker,
-} from "./dockerClient.js";
+import { containerName, docker } from "./dockerClient.js";
 import type { ServerAdapter } from "./types.js";
 
 /**
@@ -228,24 +220,79 @@ export class DockerAdapter implements ServerAdapter {
   }
 
   /**
+   * Hängt die PFLICHT-Fehlerbehandlung an einen von dockerode gelieferten
+   * Live-Stream (Logs/Stats) und liefert die Abbau-Funktion.
+   *
+   * `docker-modem` hängt an diese Streams KEINEN `error`-Listener:
+   * `Modem.demuxStream` registriert ausschließlich `'data'`, nur
+   * `followProgress` behandelt Fehler. Ein Socket-Abbruch — im Alltag vor allem
+   * ein Neustart des Docker-Daemons, während irgendwo eine Konsole offen ist —
+   * wäre damit ein unbehandeltes `error`-Event. Weil index.ts
+   * `uncaughtException` bewusst in einen kontrollierten Shutdown übersetzt,
+   * hätte das das GESAMTE Backend beendet, statt nur diesen einen Stream.
+   *
+   * `onClose` meldet dem Aufrufer, dass der Stream von SELBST endete (Fehler
+   * oder regulär, z. B. weil der Container gestoppt wurde) — nur dann darf er
+   * ihn später neu anhängen. Wird die zurückgegebene Funktion aufgerufen, war
+   * es der Aufrufer selbst und `onClose` bleibt aus.
+   */
+  private guardLiveStream(
+    stream: Readable,
+    extras: PassThrough[],
+    onClose: ((err?: Error) => void) | undefined,
+    label: string,
+  ): () => void {
+    let closed = false;
+    const teardown = (notify: boolean, cause?: Error): void => {
+      if (closed) return;
+      closed = true;
+      stream.destroy();
+      // Bei einem REGULÄREN Ende (notify ohne cause, z. B. Container gestoppt) die
+      // PassThroughs bewusst NICHT zerstören: demuxStream schreibt synchron hinein,
+      // ausgeliefert wird aber asynchron — ein destroy() hier würde die letzten
+      // Konsolen-Zeilen verwerfen. Sie enden von selbst, sobald sie leer sind.
+      if (cause || !notify) for (const s of extras) s.destroy();
+      if (notify) onClose?.(cause);
+    };
+
+    stream.on("error", (cause: Error) => {
+      logger.warn(
+        { err: cause, serverId: this.serverId },
+        `${label} abgebrochen — wird bei Bedarf neu angehängt`,
+      );
+      teardown(true, cause);
+    });
+    stream.on("end", () => teardown(true));
+    stream.on("close", () => teardown(true));
+    // Die PassThroughs werden beim Abbau zerstört, während demuxStream ggf. noch
+    // schreibt (write-after-destroy → 'error') — auch das darf nicht unbehandelt
+    // sein, sonst verlagert sich der Crash nur um eine Ebene.
+    for (const s of extras) s.on("error", () => {});
+
+    return () => teardown(false);
+  }
+
+  /**
    * Folgt dem Container-Log und ruft `onLine` je Zeile auf. Liefert eine
-   * Funktion zum Beenden des Streams zurück. `tail` = anfängliche Zeilen.
+   * Funktion zum Beenden des Streams zurück. `opts.tail` = anfängliche Zeilen,
+   * `opts.onClose` siehe {@link guardLiveStream}.
    */
   async followLogs(
     onLine: (line: string) => void,
-    tail = 200,
+    opts: { onClose?: (err?: Error) => void; tail?: number } = {},
   ): Promise<() => void> {
     const stream = (await this.container().logs({
       follow: true,
       stdout: true,
       stderr: true,
-      tail,
+      tail: opts.tail ?? 200,
       timestamps: false,
     })) as unknown as Readable;
 
     // Ohne TTY sind stdout/stderr gemultiplext → demux + zeilenweise splitten.
     const out = new PassThrough();
     const err = new PassThrough();
+    const stop = this.guardLiveStream(stream, [out, err], opts.onClose, "Log-Stream");
     docker.modem.demuxStream(stream, out, err);
 
     const splitLines = (s: PassThrough) => {
@@ -260,21 +307,20 @@ export class DockerAdapter implements ServerAdapter {
     splitLines(out);
     splitLines(err);
 
-    return () => {
-      stream.destroy();
-      out.destroy();
-      err.destroy();
-    };
+    return stop;
   }
 
   /**
    * Streamt Docker-Statistiken und ruft `onSample` mit CPU-%/RAM auf.
-   * Liefert eine Funktion zum Beenden zurück.
+   * Liefert eine Funktion zum Beenden zurück (`opts.onClose` siehe
+   * {@link guardLiveStream}).
    */
   async followStats(
     onSample: (s: { cpuPercent: number; ramUsedMb: number; ramMaxMb: number }) => void,
+    opts: { onClose?: (err?: Error) => void } = {},
   ): Promise<() => void> {
     const stream = (await this.container().stats({ stream: true })) as unknown as Readable;
+    const stop = this.guardLiveStream(stream, [], opts.onClose, "Stats-Stream");
     let buf = "";
     stream.on("data", (chunk: Buffer) => {
       buf += chunk.toString("utf8");
@@ -291,7 +337,7 @@ export class DockerAdapter implements ServerAdapter {
         }
       }
     });
-    return () => stream.destroy();
+    return stop;
   }
 
   /** Einzelne Momentaufnahme von CPU-%/RAM; `null`, wenn nicht verfügbar. */
@@ -329,6 +375,18 @@ export class DockerAdapter implements ServerAdapter {
       AttachStderr: true,
     });
     const stream = (await exec.start({ hijack: true, stdin: Boolean(stdin) })) as Duplex;
+    // Sofort (vor demuxStream und jedem Schreiben) auf Ende/Fehler horchen. Der
+    // 'error'-Listener ist doppelt nötig: dockerode/docker-modem hängt an den
+    // gehijackten Stream keinen an (→ ein unbehandeltes Event beendet über
+    // index.ts den ganzen Prozess, siehe guardLiveStream), UND ohne ihn würde die
+    // Promise bei einem Stream-Fehler NIE erfüllt — der Aufrufer (praktisch jede
+    // Dateioperation) hinge dann dauerhaft. Ein zusätzliches Timeout fehlt hier
+    // weiterhin bewusst (BUGHUNT.md Punkt 16).
+    const finished = new Promise<void>((resolve, reject) => {
+      stream.on("end", resolve);
+      stream.on("error", reject);
+    });
+
     const out = new PassThrough();
     const err = new PassThrough();
     docker.modem.demuxStream(stream, out, err);
@@ -344,7 +402,7 @@ export class DockerAdapter implements ServerAdapter {
       stream.write(stdin);
       stream.end();
     }
-    await new Promise<void>((resolve) => stream.on("end", resolve));
+    await finished;
 
     const { ExitCode } = await exec.inspect();
     if (ExitCode) {
@@ -380,8 +438,7 @@ function parseStats(
   const cpuDelta = (cpu.cpu_usage.total_usage ?? 0) - (pre.cpu_usage.total_usage ?? 0);
   const sysDelta = (cpu.system_cpu_usage ?? 0) - (pre.system_cpu_usage ?? 0);
   const cpus = cpu.online_cpus ?? 1;
-  const cpuPercent =
-    sysDelta > 0 && cpuDelta > 0 ? (cpuDelta / sysDelta) * cpus * 100 : 0;
+  const cpuPercent = sysDelta > 0 && cpuDelta > 0 ? (cpuDelta / sysDelta) * cpus * 100 : 0;
 
   // „cache" abziehen entspricht dem, was `docker stats` als Nutzung zeigt.
   const cache = mem.stats?.cache ?? 0;

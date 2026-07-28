@@ -11,6 +11,7 @@ import {
   docker,
 } from "../../adapters/dockerClient.js";
 import { createDockerAdapter } from "../../adapters/registry.js";
+import { readTarSingleFile } from "../../adapters/tarStream.js";
 
 /** Basisverzeichnis im Container, unter dem alle Dateioperationen laufen. */
 const ROOT = "/data";
@@ -47,7 +48,7 @@ export function resolveDataPath(rel: string): string {
 const REALPATH_SCRIPT =
   'p="$1"; r="$(readlink -f -- "$p" 2>/dev/null)"; ' +
   '[ -n "$r" ] || r="$(readlink -f -- "$(dirname -- "$p")" 2>/dev/null)"; ' +
-  "printf %s \"$r\"";
+  'printf %s "$r"';
 
 /**
  * Kanonischer Pfad von `abs` im Container. Bei laufendem Container per `exec`
@@ -55,19 +56,9 @@ const REALPATH_SCRIPT =
  * Wegwerf-Container mit read-only gemountetem Datenvolume (bestehendes Image,
  * kein Netzwerk, Auto-Remove). Ohne `fallback` wird der Stopp durchgereicht.
  */
-async function canonicalize(
-  server: Server,
-  abs: string,
-  fallback: boolean,
-): Promise<string> {
+async function canonicalize(server: Server, abs: string, fallback: boolean): Promise<string> {
   try {
-    const out = await createDockerAdapter(server).exec([
-      "sh",
-      "-c",
-      REALPATH_SCRIPT,
-      "sh",
-      abs,
-    ]);
+    const out = await createDockerAdapter(server).exec(["sh", "-c", REALPATH_SCRIPT, "sh", abs]);
     return out.trim();
   } catch (err) {
     if (!/not running|is not running/i.test((err as Error).message)) throw err;
@@ -81,14 +72,32 @@ async function resolveViaOneShot(serverId: string, abs: string): Promise<string>
   const out = new PassThrough();
   const chunks: Buffer[] = [];
   out.on("data", (c: Buffer) => chunks.push(c));
-  await docker.run(MC_IMAGE, [abs], out, {
-    Tty: true, // TTY → unmultiplexter stdout direkt in `out`.
-    Entrypoint: ["sh", "-c", REALPATH_SCRIPT, "sh"],
-    HostConfig: {
-      Binds: [`${dataVolumeName(serverId)}:${ROOT}:ro`],
-      AutoRemove: true,
-      NetworkMode: "none",
-    },
+
+  // Bewusst die Callback-Form: nur sie liefert den EventEmitter, über den der
+  // Attach-Stream erreichbar ist. dockerode pipet ihn ungeschützt weiter
+  // (`stream.pipe(streamo)` in Docker.prototype.run) und hängt ihm KEINEN
+  // error-Listener an — ein Abbruch (Daemon-Störung, während der Wegwerf-
+  // Container läuft) wäre sonst ein unbehandeltes 'error'-Event und hätte über
+  // index.ts den ganzen Prozess beendet (siehe adapters/tarStream.ts).
+  await new Promise<void>((resolve, reject) => {
+    const run = docker.run(
+      MC_IMAGE,
+      [abs],
+      out,
+      {
+        Tty: true, // TTY → unmultiplexter stdout direkt in `out`.
+        Entrypoint: ["sh", "-c", REALPATH_SCRIPT, "sh"],
+        HostConfig: {
+          Binds: [`${dataVolumeName(serverId)}:${ROOT}:ro`],
+          AutoRemove: true,
+          NetworkMode: "none",
+        },
+      },
+      (err: Error | null) => (err ? reject(err) : resolve()),
+    );
+    // `createContainer` läuft asynchron, das 'stream'-Event kommt also erst nach
+    // dieser Registrierung.
+    run.on("stream", (stream: NodeJS.ReadableStream) => stream.on("error", reject));
   });
   return Buffer.concat(chunks).toString("utf8");
 }
@@ -99,11 +108,7 @@ async function resolveViaOneShot(serverId: string, abs: string): Promise<string>
  * Symlink in `/data` (etwa vom laufenden Server angelegt) könnte sonst beim
  * Lesen/Schreiben/Listen/Löschen aus dem Datenverzeichnis herausführen.
  */
-async function assertInsideData(
-  server: Server,
-  abs: string,
-  fallback: boolean,
-): Promise<void> {
+async function assertInsideData(server: Server, abs: string, fallback: boolean): Promise<void> {
   const real = await canonicalize(server, abs, fallback);
   if (real !== ROOT && !real.startsWith(`${ROOT}/`)) {
     throw new Error("Ungültiger Pfad (Symlink führt aus dem Datenverzeichnis)");
@@ -118,22 +123,6 @@ function toRelative(abs: string): string {
 
 function ensureDocker(server: Server): void {
   if (server.type !== "DOCKER") throw new Error("Nur für Docker-Server verfügbar");
-}
-
-/** Liest eine einzelne Datei aus einem getArchive-Tar-Stream als Buffer. */
-function extractSingleFileBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const extract = tar.extract();
-    const chunks: Buffer[] = [];
-    extract.on("entry", (_header, entryStream, next) => {
-      entryStream.on("data", (c: Buffer) => chunks.push(c));
-      entryStream.on("end", next);
-      entryStream.resume();
-    });
-    extract.on("finish", () => resolve(Buffer.concat(chunks)));
-    extract.on("error", reject);
-    stream.pipe(extract);
-  });
 }
 
 /** Listet den Inhalt eines Verzeichnisses (eine Ebene). Erfordert laufenden Container. */
@@ -172,8 +161,7 @@ export async function listDirectory(
     const [typeChar, sizeStr, mtimeStr, ...nameParts] = line.split("\t");
     const name = nameParts.join("\t");
     if (!name) continue;
-    const type: FileEntryType =
-      typeChar === "d" ? "dir" : typeChar === "f" ? "file" : "other";
+    const type: FileEntryType = typeChar === "d" ? "dir" : typeChar === "f" ? "file" : "other";
     entries.push({
       name,
       type,
@@ -201,15 +189,11 @@ export async function readFile(server: Server, rel: string): Promise<Buffer> {
   const archive = (await container.getArchive({
     path: file,
   })) as unknown as NodeJS.ReadableStream;
-  return extractSingleFileBuffer(archive);
+  return readTarSingleFile(archive);
 }
 
 /** Schreibt eine Datei (überschreibt). Binärsicher via putArchive. */
-export async function writeFile(
-  server: Server,
-  rel: string,
-  data: Buffer,
-): Promise<void> {
+export async function writeFile(server: Server, rel: string, data: Buffer): Promise<void> {
   ensureDocker(server);
   const file = resolveDataPath(rel);
   if (file === ROOT) throw new Error("Kein Dateipfad");

@@ -4,6 +4,7 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isIP, type LookupFunction } from "node:net";
 import { posix } from "node:path";
+import { pipeline } from "node:stream/promises";
 import type { Server } from "@prisma/client";
 import * as tar from "tar-stream";
 import type {
@@ -110,10 +111,7 @@ interface ModrinthHit {
 }
 
 /** Sucht kompatible Projekte für einen Server (Loader + Version gefiltert). */
-export async function searchMods(
-  server: Server,
-  query: string,
-): Promise<ModSearchHitDto[]> {
+export async function searchMods(server: Server, query: string): Promise<ModSearchHitDto[]> {
   const info = requireLoader(server);
   const version = await gameVersion(server);
 
@@ -172,7 +170,7 @@ async function resolveFile(
     throw new Error("Keine kompatible Version für diesen Server gefunden");
   }
   const chosen = versionId
-    ? versions.find((v) => v.id === versionId) ?? versions[0]!
+    ? (versions.find((v) => v.id === versionId) ?? versions[0]!)
     : versions[0]!;
   const file = chosen.files.find((f) => f.primary) ?? chosen.files[0];
   if (!file) throw new Error("Version enthält keine Datei");
@@ -380,7 +378,11 @@ function downloadJarSsrfSafe(
     (dnsLookup as (h: string, o: unknown, cb: unknown) => void)(
       hostname,
       options,
-      (err: NodeJS.ErrnoException | null, address: string | { address: string }[], family: number) => {
+      (
+        err: NodeJS.ErrnoException | null,
+        address: string | { address: string }[],
+        family: number,
+      ) => {
         if (err) return callback(err, address as string, family);
         const addresses = Array.isArray(address) ? address : [{ address }];
         for (const a of addresses) {
@@ -471,14 +473,7 @@ export async function setModEnabled(
   const from = enabled ? `${dir}/${filename}.disabled` : `${dir}/${filename}`;
   const to = enabled ? `${dir}/${filename}` : `${dir}/${filename}.disabled`;
   // $1/$2 als Positionsargumente — keine Shell-Interpolation.
-  await createDockerAdapter(server).exec([
-    "sh",
-    "-c",
-    'mv -- "$1" "$2"',
-    "sh",
-    from,
-    to,
-  ]);
+  await createDockerAdapter(server).exec(["sh", "-c", 'mv -- "$1" "$2"', "sh", from, to]);
 }
 
 /** Listet installierte .jar(.disabled)-Dateien inkl. Aktiv-Status und Herkunft. */
@@ -503,36 +498,35 @@ export async function listInstalledMods(server: Server): Promise<InstalledModDto
     return []; // Ordner existiert noch nicht.
   }
 
-  return new Promise((resolve, reject) => {
-    const extract = tar.extract();
-    const byName = new Map<string, InstalledModDto>();
-    const prefix = `${info.folder}/`;
-    extract.on("entry", (header, stream, next) => {
-      const rel = header.name.slice(prefix.length);
-      const isJar = rel.endsWith(".jar");
-      const isDisabled = rel.endsWith(".jar.disabled");
-      if (header.type === "file" && !rel.includes("/") && (isJar || isDisabled)) {
-        const base = isDisabled ? rel.slice(0, -".disabled".length) : rel;
-        const existing = byName.get(base);
-        // Aktive Datei hat Vorrang, falls beide Varianten existieren.
-        if (!existing || (isJar && !existing.enabled)) {
-          byName.set(base, {
-            filename: base,
-            sizeBytes: header.size ?? 0,
-            enabled: isJar,
-            source: provenance.get(base),
-          });
-        }
+  const extract = tar.extract();
+  const byName = new Map<string, InstalledModDto>();
+  const prefix = `${info.folder}/`;
+  extract.on("entry", (header, stream, next) => {
+    const rel = header.name.slice(prefix.length);
+    const isJar = rel.endsWith(".jar");
+    const isDisabled = rel.endsWith(".jar.disabled");
+    if (header.type === "file" && !rel.includes("/") && (isJar || isDisabled)) {
+      const base = isDisabled ? rel.slice(0, -".disabled".length) : rel;
+      const existing = byName.get(base);
+      // Aktive Datei hat Vorrang, falls beide Varianten existieren.
+      if (!existing || (isJar && !existing.enabled)) {
+        byName.set(base, {
+          filename: base,
+          sizeBytes: header.size ?? 0,
+          enabled: isJar,
+          source: provenance.get(base),
+        });
       }
-      stream.on("end", next);
-      stream.resume(); // Inhalt überspringen.
-    });
-    extract.on("finish", () =>
-      resolve([...byName.values()].sort((a, b) => a.filename.localeCompare(b.filename))),
-    );
-    extract.on("error", reject);
-    archive.pipe(extract);
+    }
+    stream.on("end", next);
+    stream.on("error", (err: Error) => extract.destroy(err));
+    stream.resume(); // Inhalt überspringen.
   });
+  // pipeline() statt archive.pipe(extract): `.pipe()` leitet Fehler der Quelle
+  // nicht weiter, ein abgebrochener Docker-Socket wäre also ein unbehandeltes
+  // 'error'-Event → Prozess-Shutdown (siehe adapters/tarStream.ts).
+  await pipeline(archive, extract);
+  return [...byName.values()].sort((a, b) => a.filename.localeCompare(b.filename));
 }
 
 /** Löscht eine installierte Datei (aktiv oder deaktiviert) + ihre Herkunft. */

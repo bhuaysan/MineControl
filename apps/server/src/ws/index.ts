@@ -95,8 +95,10 @@ function hasSubscriber(topic: WsTopic): boolean {
  * Abonnenten aufgebaut und beim letzten wieder abgebaut. `attach()` kann
  * fehlschlagen (Container existiert/läuft noch nicht) und wird dann später
  * per `reattach…` erneut versucht.
+ *
+ * Exportiert (nur) für Unit-Tests der Zustandslogik — siehe ws/index.test.ts.
  */
-class ManagedStream {
+export class ManagedStream {
   refs = 0;
   private stop: (() => void) | null = null;
   private attaching = false;
@@ -104,7 +106,7 @@ class ManagedStream {
 
   constructor(
     readonly serverId: string,
-    private readonly begin: (serverId: string) => Promise<() => void>,
+    private readonly begin: (serverId: string, onClose: () => void) => Promise<() => void>,
   ) {}
 
   get attached(): boolean {
@@ -117,12 +119,35 @@ class ManagedStream {
     if (this.stop || this.attaching) return;
     this.attaching = true;
     this.detachRequested = false;
+    // Wird gesetzt, sobald begin() aufgelöst hat — die onClose-Rückmeldung darf
+    // nur den Stream zurücksetzen, den SIE betrifft (nicht einen inzwischen neu
+    // aufgebauten).
+    let own: (() => void) | null = null;
+    // Der Stream kann schon WÄHREND des Aufbaus wegfallen (beginMetrics wartet
+    // nach followStats noch auf die RCON-Verbindung) — dann darf er unten nicht
+    // als „angehängt" registriert werden, sonst gilt ein toter Stream dauerhaft
+    // als aktiv und reattach…() greift nie.
+    let closedDuringAttach = false;
     try {
-      const stop = await this.begin(this.serverId);
-      // Während des (asynchronen) Aufbaus abgemeldet? Dann die eben erzeugte
-      // Ressource (RCON-Verbindung, Timer, Log-Stream) sofort wieder freigeben —
-      // sonst bleibt sie nach einem schnellen Subscribe→Disconnect für immer offen.
-      if (this.detachRequested) {
+      const stop = await this.begin(this.serverId, () => {
+        // Der Stream ist von selbst weggefallen (Container gestoppt oder
+        // Docker-Socket abgebrochen) — nur als „nicht mehr angehängt" markieren.
+        // `stop()` NICHT aufrufen: die Ressourcen sind schon abgebaut. So kann
+        // ein späteres reattachServerStreams() (Start/Restart/Provisionierung)
+        // die Konsole/Metriken wieder aufbauen, statt sie bis zum vollständigen
+        // Abmelden aller Abonnenten stumm zu lassen.
+        if (own === null) {
+          closedDuringAttach = true;
+        } else if (this.stop === own) {
+          this.stop = null;
+        }
+      });
+      own = stop;
+      // Während des (asynchronen) Aufbaus abgemeldet oder weggefallen? Dann die
+      // eben erzeugte Ressource (RCON-Verbindung, Timer, Log-Stream) sofort wieder
+      // freigeben — sonst bleibt sie nach einem schnellen Subscribe→Disconnect für
+      // immer offen. `stop()` ist idempotent.
+      if (this.detachRequested || closedDuringAttach) {
         stop();
         this.stop = null;
       } else {
@@ -153,33 +178,26 @@ class ManagedStream {
 const consoleStreams = new Map<string, ManagedStream>();
 const metricsStreams = new Map<string, ManagedStream>();
 
-async function beginConsole(serverId: string): Promise<() => void> {
+async function beginConsole(serverId: string, onClose: () => void): Promise<() => void> {
   const server = await prisma.server.findUnique({ where: { id: serverId } });
   if (!server || server.type !== "DOCKER") throw new Error("Kein Docker-Server");
   const adapter = createDockerAdapter(server);
-  return adapter.followLogs((line) =>
-    broadcast(`console:${serverId}`, {
-      type: "console.line",
-      serverId,
-      line,
-      ts: new Date().toISOString(),
-    }),
+  return adapter.followLogs(
+    (line) =>
+      broadcast(`console:${serverId}`, {
+        type: "console.line",
+        serverId,
+        line,
+        ts: new Date().toISOString(),
+      }),
+    { onClose },
   );
 }
 
-async function beginMetrics(serverId: string): Promise<() => void> {
+async function beginMetrics(serverId: string, onClose: () => void): Promise<() => void> {
   const server = await prisma.server.findUnique({ where: { id: serverId } });
   if (!server || server.type !== "DOCKER") throw new Error("Kein Docker-Server");
   const adapter = createDockerAdapter(server);
-  const stopStats = await adapter.followStats((s) =>
-    broadcast(`metrics:${serverId}`, {
-      type: "metrics.update",
-      serverId,
-      cpuPercent: s.cpuPercent,
-      ramUsedMb: s.ramUsedMb,
-      ramMaxMb: s.ramMaxMb,
-    }),
-  );
 
   // TPS (Paper/Spigot) wird per RCON gepollt — docker stats liefert das nicht.
   // Eine EINZELNE RCON-Verbindung bleibt für die Dauer des Streams offen
@@ -187,6 +205,40 @@ async function beginMetrics(serverId: string): Promise<() => void> {
   // Server-Konsole mit „RCON Client started/shutting down".
   let tpsTimer: ReturnType<typeof setInterval> | undefined;
   let persistentRcon: Awaited<ReturnType<typeof adapter.openPersistentRcon>> | undefined;
+  let stopped = false;
+  /** Baut TPS-Poll + RCON ab. Idempotent, damit er sowohl vom Aufrufer als auch
+   *  aus der onClose-Rückmeldung des stats-Streams gerufen werden kann. */
+  const stopTps = (): void => {
+    stopped = true;
+    if (tpsTimer) {
+      clearInterval(tpsTimer);
+      tpsTimer = undefined;
+    }
+    if (persistentRcon) {
+      void persistentRcon.close();
+      persistentRcon = undefined;
+    }
+  };
+
+  const stopStats = await adapter.followStats(
+    (s) =>
+      broadcast(`metrics:${serverId}`, {
+        type: "metrics.update",
+        serverId,
+        cpuPercent: s.cpuPercent,
+        ramUsedMb: s.ramUsedMb,
+        ramMaxMb: s.ramMaxMb,
+      }),
+    {
+      onClose: () => {
+        // Fällt der stats-Stream weg, müssen TPS-Poll und RCON mit — sonst
+        // liefen sie nach einem späteren Neu-Anhängen doppelt.
+        stopTps();
+        onClose();
+      },
+    },
+  );
+
   if (TPS_EDITIONS.includes(server.edition)) {
     persistentRcon = await adapter.openPersistentRcon().catch(() => undefined);
     if (persistentRcon) {
@@ -204,19 +256,21 @@ async function beginMetrics(serverId: string): Promise<() => void> {
       void pollTps();
       tpsTimer = setInterval(() => void pollTps(), 10_000);
     }
+    // Der stats-Stream kann während des (asynchronen) RCON-Aufbaus schon
+    // weggefallen sein — dann das eben Erzeugte sofort wieder freigeben.
+    if (stopped) stopTps();
   }
 
   return () => {
     stopStats();
-    if (tpsTimer) clearInterval(tpsTimer);
-    void persistentRcon?.close();
+    stopTps();
   };
 }
 
 function acquire(
   map: Map<string, ManagedStream>,
   serverId: string,
-  begin: (id: string) => Promise<() => void>,
+  begin: (id: string, onClose: () => void) => Promise<() => void>,
 ): void {
   let stream = map.get(serverId);
   if (!stream) {

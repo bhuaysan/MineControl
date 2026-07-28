@@ -104,7 +104,15 @@ export async function activeLevel(server: Server): Promise<string> {
 async function worldExists(server: Server, name: string): Promise<boolean> {
   const container = docker.getContainer(containerName(server.id));
   try {
-    await container.getArchive({ path: `/data/${name}/level.dat` });
+    const archive = (await container.getArchive({
+      path: `/data/${name}/level.dat`,
+    })) as unknown as Readable;
+    // Der Inhalt interessiert nicht (es geht nur um „existiert"), der Stream muss
+    // aber abgeräumt werden: sonst bleibt der Docker-Socket offen und ein Fehler
+    // darauf wäre unbehandelt — was über index.ts den ganzen Prozess beendet
+    // (siehe adapters/tarStream.ts). Handler VOR destroy() anhängen.
+    archive.on("error", () => {});
+    archive.destroy();
     return true;
   } catch {
     return false;
@@ -170,11 +178,7 @@ export async function switchWorld(server: Server, name: string): Promise<void> {
   });
 }
 
-export async function createWorld(
-  server: Server,
-  name: string,
-  seed?: string,
-): Promise<void> {
+export async function createWorld(server: Server, name: string, seed?: string): Promise<void> {
   return withServerLock(server.id, async () => {
     ensureDocker(server);
     assertName(name);
@@ -277,8 +281,7 @@ function repackWorld(gzBuffer: Buffer, name: string): Promise<Buffer> {
         stream.resume();
         return;
       }
-      const finalName =
-        header.type === "directory" ? `${normalized}/` : normalized;
+      const finalName = header.type === "directory" ? `${normalized}/` : normalized;
       if (/\/level\.dat$/.test(finalName)) sawLevel = true;
 
       const bufs: Buffer[] = [];
@@ -293,8 +296,7 @@ function repackWorld(gzBuffer: Buffer, name: string): Promise<Buffer> {
       stream.on("error", bail);
       stream.on("end", () => {
         if (failed) return;
-        const content =
-          header.type === "directory" ? Buffer.alloc(0) : Buffer.concat(bufs);
+        const content = header.type === "directory" ? Buffer.alloc(0) : Buffer.concat(bufs);
         pack.entry(
           {
             name: finalName,
@@ -317,19 +319,13 @@ function repackWorld(gzBuffer: Buffer, name: string): Promise<Buffer> {
       }
       pack.finalize();
     });
-    extract.on("error", () =>
-      bail(new WorldError(400, "bad_archive", "Beschädigtes Archiv")),
-    );
+    extract.on("error", () => bail(new WorldError(400, "bad_archive", "Beschädigtes Archiv")));
 
     Readable.from(gzBuffer).pipe(gunzip).pipe(extract);
   });
 }
 
-export async function uploadWorld(
-  server: Server,
-  name: string,
-  gzBuffer: Buffer,
-): Promise<void> {
+export async function uploadWorld(server: Server, name: string, gzBuffer: Buffer): Promise<void> {
   return withServerLock(server.id, async () => {
     ensureDocker(server);
     assertName(name);
@@ -346,11 +342,7 @@ export async function uploadWorld(
 
 function requireModdable(server: Server): void {
   if (!MODDABLE.includes(server.edition)) {
-    throw new WorldError(
-      422,
-      "unsupported_edition",
-      "Pregen benötigt Paper/Spigot/Fabric/Forge",
-    );
+    throw new WorldError(422, "unsupported_edition", "Pregen benötigt Paper/Spigot/Fabric/Forge");
   }
 }
 

@@ -54,6 +54,11 @@ pro Session klein und spart Tokens.
 > Stream-`error`-Listener) und wurde gegen den Quellcode von `docker-modem`
 > gegengeprüft, nicht nur vermutet. Die bestehende Test-Suite (20 Tests) läuft
 > dabei grün durch — keiner der Funde ist von ihr abgedeckt.
+>
+> **Update 5 (2026-07-28):** **Punkt 15 ist behoben** (Details im Punkt selbst),
+> und dabei fiel bei **Punkt 16** die Hälfte mit weg — der fehlende
+> `'error'`-Listener in `exec()`; das Timeout bleibt offen. Die Suite umfasst
+> jetzt 29 Tests. Offen sind damit: **2, 7–14, 16 (Rest), 17–23.**
 
 ---
 
@@ -290,7 +295,40 @@ HISTORY_ACTIONS). Beim Umbau die Altdaten im details-JSON weiter mitlesen,
 sonst verschwindet der bisherige Verlauf.
 ```
 
-## 15. Fehlende `error`-Listener auf Docker-Streams reißen den ganzen Prozess mit
+## 15. Fehlende `error`-Listener auf Docker-Streams reißen den ganzen Prozess mit — ✅ ERLEDIGT (2026-07-28)
+
+> **Behoben.** Neuer gemeinsamer Helfer `apps/server/src/adapters/tarStream.ts`
+> (`readTarSingleFile` / `readTarSingleFileOrNull`) ersetzt die drei fast
+> identischen, handgeschriebenen Extraktoren in `modules/servers/docker.ts`,
+> `modules/files/service.ts` und `modules/luckperms/service.ts` und nutzt
+> `stream.pipeline()`. `listInstalledMods` (mods), der Welt-Download
+> (`world/routes.ts`) und `restoreBackup` (backups) laufen ebenfalls über
+> `pipeline()`. Im `DockerAdapter` kapselt neu `guardLiveStream()` die
+> Fehlerbehandlung für Log-/Stats-Streams; `exec()` horcht jetzt vor allem
+> anderen auf `'end'`/`'error'` (das behebt dort auch das „Promise wird nie
+> erfüllt"-Hängen, siehe Punkt 16).
+>
+> Beim Umsetzen kamen **zwei weitere Stellen derselben Klasse** dazu, die in der
+> Liste oben fehlten: `docker.run()` in `modules/files/service.ts`
+> (`resolveViaOneShot`) — dockerode pipet dort seinen Attach-Stream ungeschützt,
+> deshalb jetzt die Callback-Form mit `hub.on("stream", …)` — und der in
+> `worldExists` (`modules/world/service.ts`) geöffnete, aber nie konsumierte
+> `getArchive`-Stream, der nun sauber abgeräumt wird.
+>
+> Zusätzlich behoben, weil der reine Fehler-Handler sonst eine dauerhaft stumme
+> Konsole hinterlassen hätte: Live-Streams melden über `onClose` zurück, dass sie
+> von selbst weggefallen sind, und `ManagedStream` (ws/index.ts) gilt dann wieder
+> als „nicht angehängt" — `reattachServerStreams()` baut sie beim nächsten
+> Start/Restart neu auf. Das behebt nebenbei, dass die Konsole schon vorher nach
+> einem simplen Stop/Start stumm blieb (der Log-Stream endet beim Container-Stop,
+> der Stream galt aber weiter als aktiv).
+>
+> Regressionstests: `adapters/tarStream.test.ts` (5) und vier neue Fälle in
+> `ws/index.test.ts` für die Zustandslogik von `ManagedStream`. Suite jetzt 29
+> Tests, grün; `tsc`, `eslint` und `prettier` ebenfalls.
+
+<details>
+<summary>Ursprünglicher Befund</summary>
 
 ```
 Bekannter Fund (schwerster des Audits, diagnostiziert und gegen den
@@ -339,9 +377,17 @@ Erstellen schon macht. Danach prüfen, ob ein Regressionstest möglich ist
 (ein PassThrough, der `emit("error")` auslöst, statt eines echten Daemons).
 ```
 
-## 16. `DockerAdapter.exec()` ohne Timeout — hängender Request statt Fehler
+</details>
+
+## 16. `DockerAdapter.exec()` ohne Timeout — hängender Request statt Fehler (Teil erledigt)
 
 ```
+TEILWEISE ERLEDIGT (2026-07-28, mit Punkt 15): exec() hat jetzt einen
+'error'-Listener, der VOR demuxStream/jedem Schreiben hängt — der Fall
+„Stream-Fehler → Promise wird nie erfüllt → Aufrufer hängt für immer" ist
+damit weg (die Operation scheitert stattdessen sauber). OFFEN bleibt der
+eigentliche Punkt: das TIMEOUT sowie die Reaktion auf 'close' ohne 'end'.
+
 Bekannter Fund. apps/server/src/adapters/docker.ts kapselt `inspect` (6 s) und
 alle Lifecycle-Operationen (75 s) bewusst in `withTimeout`, mit ausführlicher
 Begründung im Kommentar — `exec()` aber NICHT. Zusätzlich wartet exec mit
@@ -355,7 +401,10 @@ praktisch alle Dateioperationen — listDirectory/deletePath/canonicalize
 (modules/world/service.ts). Ein Hänger blockiert damit den jeweiligen
 HTTP-Request dauerhaft. Aufgabe: exec in `withTimeout` fassen (eigenes,
 großzügigeres Limit — `du -sb` über eine große Welt darf nicht abgeschnitten
-werden) und zusätzlich auf 'error'/'close' reagieren, nicht nur auf 'end'.
+werden) und zusätzlich auf 'close' reagieren, nicht nur auf 'end' ('error' ist
+inzwischen abgedeckt, s. o.). Vorsicht bei 'close': es darf den Erfolgspfad
+nicht verkürzen, solange der Readable-Teil noch ungelesene Ausgabe hat — sonst
+liefert exec() stillschweigend abgeschnittene Dateiinhalte.
 ```
 
 ## 17. Welt-Upload ist faktisch auf 50 MB begrenzt und meldet 502 statt 413
