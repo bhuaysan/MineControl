@@ -45,6 +45,15 @@ pro Session klein und spart Tokens.
 > (der Auftrag war auf die drei Netzwerk-Fehler begrenzt). Sie sind nach
 > Schwere sortiert; die Prompts enthalten den Befund, damit jede Session ohne
 > Vorwissen startet.
+>
+> **Update 4 (Backend-Audit am 2026-07-28):** Punkte 7–14 sind noch offen und
+> unverändert gültig. Neu hinzu kommen die Punkte **15–23** (Punkt 23 bündelt
+> zehn Kleinfunde, die einzeln keine eigene Session lohnen), ebenfalls nach
+> Schwere sortiert und ebenfalls nur diagnostiziert, nicht behoben. Punkt 15 ist
+> der schwerste Fund des Audits (Prozess-Absturz durch fehlende
+> Stream-`error`-Listener) und wurde gegen den Quellcode von `docker-modem`
+> gegengeprüft, nicht nur vermutet. Die bestehende Test-Suite (20 Tests) läuft
+> dabei grün durch — keiner der Funde ist von ihr abgedeckt.
 
 ---
 
@@ -279,4 +288,277 @@ begrenzen — am saubersten mit einem eigenen, indexierten Spieler-Feld am
 AuditLog, das recordAudit befüllt (Migration nötig; die Aktionen stehen in
 HISTORY_ACTIONS). Beim Umbau die Altdaten im details-JSON weiter mitlesen,
 sonst verschwindet der bisherige Verlauf.
+```
+
+## 15. Fehlende `error`-Listener auf Docker-Streams reißen den ganzen Prozess mit
+
+```
+Bekannter Fund (schwerster des Audits, diagnostiziert und gegen den
+docker-modem-Quellcode gegengeprüft, nicht behoben). Kein einziger der von
+dockerode gelieferten Streams hat einen `error`-Listener. `docker-modem`
+hängt selbst KEINEN an: `Modem.prototype.demuxStream` registriert
+ausschließlich `'data'` (node_modules/.pnpm/docker-modem@5.0.7/.../modem.js
+~Zeile 440); nur `followProgress` registriert `'error'` — deshalb ist
+`ensureImage` in modules/servers/docker.ts sicher und `createBackup` (nutzt
+`pipeline()`) ebenfalls. Alle übrigen Stellen sind es nicht, und weil
+index.ts `uncaughtException` bewusst in einen vollständigen Shutdown
+übersetzt, beendet JEDES dieser Events das Backend (alle Sessions,
+Konsolen-Streams und laufenden Provisionierungen fallen mit).
+
+Betroffene Stellen:
+ - apps/server/src/adapters/docker.ts `followLogs` — Stream aus
+   `container.logs({follow:true})`, nur demuxStream + eigene 'data'-Handler.
+ - apps/server/src/adapters/docker.ts `followStats` — Stream aus
+   `container.stats({stream:true})`, nur ein 'data'-Handler.
+ - apps/server/src/adapters/docker.ts `exec` — der gehijackte Duplex hat
+   weder 'error'-Listener NOCH ein Timeout (siehe Punkt 16).
+ - Alle `getArchive`-Quellstreams, die in einen tar-extract gepiped werden:
+   `.pipe()` leitet Fehler NICHT weiter, der vorhandene
+   `extract.on("error", …)` deckt die Quelle also nicht ab —
+   modules/servers/docker.ts `extractSingleFile`, modules/files/service.ts
+   `extractSingleFileBuffer`, modules/mods/service.ts `listInstalledMods`,
+   modules/luckperms/service.ts `readContainerFile`.
+ - modules/world/routes.ts `world/download` — `archive.pipe(createGzip())`;
+   Fastify hängt seinen Handler nur an das gzip-Ende der Kette, nicht an
+   `archive`.
+ - modules/backups/service.ts `restoreBackup` —
+   `createReadStream(backup.path).pipe(createGunzip())`: fehlt die
+   Backup-Datei auf der Platte (manuell gelöscht, Mount weg), ist der
+   ENOENT-Fehler unhandled.
+
+Reproduzierbare Auslöser: `systemctl restart docker`, während irgendwo eine
+Konsole/ein Metrik-Stream offen ist (ECONNRESET auf dem Log-Socket); oder ein
+Restore auf ein Backup, dessen Datei nicht mehr existiert.
+
+Aufgabe: An JEDER dieser Stellen einen `error`-Handler vor dem ersten
+Datenfluss anhängen (Muster: `rcon.on("error", …)` VOR `connect()` in
+adapters/external.ts, das genau dieselbe Bug-Klasse für RCON schon behoben
+hat). Für die pipe-Ketten am saubersten auf `stream.pipeline()` umstellen,
+das Fehler über alle Glieder propagiert — so wie es backups/service.ts beim
+Erstellen schon macht. Danach prüfen, ob ein Regressionstest möglich ist
+(ein PassThrough, der `emit("error")` auslöst, statt eines echten Daemons).
+```
+
+## 16. `DockerAdapter.exec()` ohne Timeout — hängender Request statt Fehler
+
+```
+Bekannter Fund. apps/server/src/adapters/docker.ts kapselt `inspect` (6 s) und
+alle Lifecycle-Operationen (75 s) bewusst in `withTimeout`, mit ausführlicher
+Begründung im Kommentar — `exec()` aber NICHT. Zusätzlich wartet exec mit
+`await new Promise<void>((resolve) => stream.on("end", resolve))` auf genau ein
+Event: endet der Stream nicht mit 'end' (Fehler, hartes Schließen), wird die
+Promise nie erfüllt und der Aufrufer hängt unbegrenzt. Über exec laufen
+praktisch alle Dateioperationen — listDirectory/deletePath/canonicalize
+(modules/files/service.ts), setModEnabled/deleteMod/readPluginYml
+(modules/mods/service.ts), das Löschen der Export-Datei
+(modules/luckperms/service.ts), `rm -rf` beim Welt-Löschen
+(modules/world/service.ts). Ein Hänger blockiert damit den jeweiligen
+HTTP-Request dauerhaft. Aufgabe: exec in `withTimeout` fassen (eigenes,
+großzügigeres Limit — `du -sb` über eine große Welt darf nicht abgeschnitten
+werden) und zusätzlich auf 'error'/'close' reagieren, nicht nur auf 'end'.
+```
+
+## 17. Welt-Upload ist faktisch auf 50 MB begrenzt und meldet 502 statt 413
+
+```
+Bekannter Fund. index.ts registriert @fastify/multipart global mit
+`limits: { fileSize: 50 * 1024 * 1024 }`. Zwei Routen heben das per Request
+bewusst an — modules/mods/routes.ts (`config.modsMaxBytes`, 200 MB) und
+modules/servers/routes.ts `import/stage` (`config.importMaxBytes`, 10 GiB, mit
+Kommentar „per-Request angehoben"). modules/world/routes.ts `worlds/upload`
+und modules/files/routes.ts `files/upload` rufen dagegen `request.file()` OHNE
+`limits` auf und erben damit die 50 MB. Für einen Welt-Upload ist das die
+falsche Größenordnung (die Welt-Obergrenze im Service ist
+`MAX_UNCOMPRESSED = 2 GiB`). Verifiziert: @fastify/multipart@10.1.0 hat
+`throwFileSizeLimit` per Default true und lässt `toBuffer()` mit
+FST_REQ_FILE_TOO_LARGE (statusCode 413) ablehnen — world/routes.ts `fail()`
+kennt diesen Fall nicht und mappt ihn auf **502 „world_failed"**,
+files/routes.ts `fail()` auf 400 „file_error". Der Nutzer sieht also einen
+Serverfehler statt „Datei zu groß". Aufgabe: (1) beide Routen mit einem
+passenden, aus der Config abgeleiteten `limits`-Wert versehen; (2) den
+413-Fall wie in mods/routes.ts und import/stage explizit behandeln
+(`statusCode === 413 || file.file.truncated` → 413). Achtung beim Anheben:
+`toBuffer()` puffert die komplette Datei im RAM, und `repackWorld` legt beim
+Umpacken eine zweite Kopie an — deshalb nicht blind auf 2 GiB stellen,
+sondern entweder streamen (Muster: import/stage schreibt auf Platte) oder
+ein bewusst gewähltes, dokumentiertes Limit setzen.
+```
+
+## 18. Zeilenumbruch im Proxy-Namen erzeugt eine unparsebare Proxy-Config
+
+```
+Bekannter Fund (gleiche Wurzel wie Punkt 11: Namensfelder erlauben
+Steuerzeichen). `createNetworkSchema` in modules/networks/routes.ts validiert
+`name`/`proxyName` nur als `z.string().min(1).max(64)`. Der Proxy-Name wird als
+MOTD in die generierte Config geschrieben: `renderVelocityToml` (velocity.ts)
+setzt `motd = "${tomlString(opts.motd)}"`, `renderBungeeConfig` (bungee.ts)
+setzt `motd: '${yamlString(opts.motd)}'`. Beide Escape-Funktionen behandeln
+laut eigenem Kommentar NUR Quotes (`"`/`\` bzw. `'`) — Zeilenumbrüche nicht.
+Ein `\n` im Proxy-Namen beendet damit den TOML-Basic-String bzw. den
+YAML-Scalar: velocity.toml ist unparsebar (Velocity bootet nicht mehr), in
+config.yml lassen sich weitere Schlüssel einschleusen. Betroffen ist jeder
+Aufruf von `rewriteProxyConfig`, also auch jedes spätere Attach/Detach —
+das Netzwerk ist danach dauerhaft kaputt, nicht nur einmal. Aufgabe:
+Steuerzeichen in `name`/`proxyName` (und konsistent in `server.name`, siehe
+Punkt 11) per Zod ausschließen, UND zusätzlich in `tomlString`/`yamlString`
+defensiv escapen/entfernen — die Renderer sollen nicht auf saubere Eingaben
+vertrauen müssen. Unit-Tests dazu schreiben (Muster:
+networks/service.test.ts).
+```
+
+## 19. `motd` landet ungeprüft im Container-Env (server.properties-Injection)
+
+```
+Bekannter Fund. `createDockerSchema` (modules/servers/routes.ts) erlaubt
+`motd: z.string().max(120)` ohne jede Zeichenprüfung, und `createContainer`
+(modules/servers/docker.ts) schreibt daraus `MOTD=${p.motd ?? server.name}`
+ins Container-Env. itzg schreibt diesen Wert bei OVERRIDE_SERVER_PROPERTIES
+(Default) bei JEDEM Start in server.properties. Direkt daneben verbietet
+`propertiesSchema` in derselben Datei Zeilenumbrüche in Property-Werten
+ausdrücklich, mit der Begründung „server.properties ist ein naives
+key=value-je-Zeile-Format" — genau diese Begründung gilt hier auch, nur ist
+sie nicht umgesetzt. Der Fallback `server.name` ist ebenfalls ungeprüft
+(`z.string().min(1).max(64)`). Aufgabe: erst empirisch klären, ob itzg/
+mc-image-helper den Env-Wert beim Schreiben escaped (dann ist es nur
+Kosmetik) oder 1:1 durchschreibt (dann ist es eine echte Injection in
+server.properties). Danach `motd` und `name` auf denselben Zeichenvorrat
+einschränken wie `propertiesSchema`. Zusammen mit Punkt 18 und Punkt 11 am
+besten in EINER Session als „Namens-/Freitextfelder konsistent validieren"
+angehen.
+```
+
+## 20. Benutzer löschen löscht rückwirkend seine Audit-Zuordnung
+
+```
+Bekannter Fund. prisma/schema.prisma deklariert `AuditLog.user` als optionale
+Relation ohne `onDelete` — Prisma erzeugt daraus SET NULL, verifiziert in
+prisma/migrations/20260718170535_init/migration.sql:54:
+`AuditLog_userId_fkey … ON DELETE SET NULL`. `DELETE /api/users/:id`
+(modules/users/routes.ts) löscht die Zeile also, und ALLE Audit-Einträge
+dieses Benutzers verlieren ihren Urheber; modules/audit/routes.ts zeigt sie
+danach als `"System"` an (`e.user?.username ?? "System"`). Ein Admin kann
+damit durch Anlegen → Handeln → Löschen eines Zweitkontos die Spur
+verwischen, und ganz ohne Absicht verliert das Log bei jedem normalen
+Personalwechsel die Nachvollziehbarkeit. Genau dafür existiert das Log aber.
+Aufgabe: Urheber unabhängig von der Relation festhalten — sauberste Variante
+ist ein zusätzliches, denormalisiertes `actorName`-Feld, das `recordAudit`
+beim Schreiben mitfüllt (Migration nötig; Altdaten weiter über die Relation
+anzeigen, sonst verschwindet der bisherige Verlauf). Alternativ die Relation
+auf `Restrict` stellen und Benutzer nur deaktivieren statt löschen — das ist
+aber der größere Eingriff, weil es ein neues „deaktiviert"-Konzept braucht.
+```
+
+## 21. `filenameFromResponse` kann mit URIError statt 400 abbrechen
+
+```
+Bekannter Fund. modules/mods/service.ts (~Zeile 457) macht
+`decodeURIComponent(match[1]!)` auf dem aus `Content-Disposition` gezogenen
+Dateinamen. Bei kaputtem Prozent-Encoding (z. B.
+`Content-Disposition: attachment; filename="%zz.jar"`) wirft
+`decodeURIComponent` einen `URIError`. Der ist keine `ModInputError`, also
+mappt `fail()` in modules/mods/routes.ts ihn auf 502 „mod_error" — bzw. der
+globale Error-Handler auf 500 —, obwohl es ein sauber diagnostizierbarer
+Eingabefehler des Ziel-Servers ist. Der Rest der Funktion ist bewusst
+defensiv (`JAR_NAME_RE`-Prüfung danach), nur dieser eine Aufruf nicht.
+Aufgabe: den `decodeURIComponent` in try/catch fassen und im Fehlerfall auf
+`posix.basename(url.pathname)` zurückfallen (das ist ohnehin schon der
+Pfad-Fallback). Kleiner Fund, kleiner Fix — gut als Beifang zu Punkt 8, das
+dieselbe Datei betrifft.
+```
+
+## 22. `/api/servers/test` ist ein ungeprüfter Outbound-Connect für Moderatoren
+
+```
+Bekannter Fund (bewusst als „by design?" zu klären, nicht blind zu fixen).
+`POST /api/servers/test` (modules/servers/routes.ts) ist nur mit MODERATOR
+geschützt und baut mit `new ExternalAdapter({host, port, …})` eine
+TCP-Verbindung zu einem frei wählbaren `host:port` auf; `testConnection`
+meldet Erfolg/Fehler und die Latenz getrennt für Ping und RCON zurück. Damit
+ist die Route ein brauchbarer Portscanner fürs interne Netz — mit genau der
+Trefferauskunft, die modules/mods/service.ts über `isBlockedIp`/
+`assertPublicHost` für `mods/from-url` bewusst verhindert (siehe Punkt 8).
+Dieselbe Lücke gilt für `POST /api/servers/external` (Admin) und in der Folge
+für jeden 60-s-Sampler-Ping auf diesen Host. Aufgabe: entscheiden, ob das im
+Bedrohungsmodell überhaupt zählt — bei externen Servern ist „beliebiger Host"
+ja der Zweck der Funktion, und der Zugriff ist authentifiziert. Falls ja,
+liegt der minimale Fix darin, `assertPublicHost` aus mods/service.ts in einen
+gemeinsamen Helper zu ziehen und wenigstens auf `/api/servers/test`
+anzuwenden (nicht auf bereits angelegte Server, sonst brechen legitime
+LAN-Server im Heimnetz). Ergebnis der Entscheidung in PLANNING.md §11
+festhalten, so wie es dort mit der Netzwerk-Lücke schon gemacht wurde.
+```
+
+## 23. Kleinere Korrektheitsfunde (sammelbar in einer Session)
+
+```
+Bekannte Funde, alle einzeln klein, alle diagnostiziert und nicht behoben:
+
+(1) modules/mods/service.ts `updatePlugin`: schreibt die neue Jar immer als
+    aktive `.jar` und löscht danach die alte Variante über `deleteMod` (die
+    `.jar` UND `.jar.disabled` entfernt). Ein bewusst DEAKTIVIERTES Plugin ist
+    nach dem Update also stillschweigend wieder aktiv. Vorher den
+    Aktiv-Status ermitteln (`listInstalledMods`) und danach wiederherstellen.
+
+(2) modules/tasks/service.ts `updateTask`: `payload: input.payload ?
+    JSON.stringify(input.payload) : undefined` — `undefined` heißt bei Prisma
+    „nicht ändern", ein Payload lässt sich also nie wieder leeren. Für
+    „löschen" muss explizit `null` geschrieben werden.
+
+(3) modules/networks/service.ts `parseDockerCfg`: Default
+    `onlineMode: (c.onlineMode as boolean) ?? true` widerspricht dem
+    Wizard-Default `onlineMode: false` (`createDockerSchema`). Bei fehlendem
+    oder kaputtem `dockerConfig`-JSON schaltet ein Detach den Subserver
+    dadurch auf online-mode TRUE — also strenger als der Nutzer ihn angelegt
+    hat. Default auf `false` ziehen oder aus `server.edition` ableiten.
+
+(4) modules/metrics/service.ts `maybeAutoRestart`: der `catch` um
+    `adapter.restart()` loggt nur; danach laufen `recordAudit` und
+    `notifyAutoRestart` unbedingt weiter und behaupten einen erfolgreichen
+    Neustart, der nie stattgefunden hat. Bei Fehlschlag anders melden.
+
+(5) Speicher, der nie geräumt wird: `prevStates`, `suppressedUntil` und
+    `autoRestartTracks` (modules/metrics/service.ts) behalten Einträge
+    gelöschter Server für immer; `detachServerStreams` (ws/index.ts) ruft
+    `detach()`, entfernt den ManagedStream aber NICHT aus
+    `consoleStreams`/`metricsStreams` — bleibt ein Client auf die Konsole
+    eines gelöschten Servers abonniert, überlebt der Eintrag mit refs > 0
+    dauerhaft. Beim Server-Löschen (modules/servers/routes.ts) aufräumen.
+
+(6) modules/servers/import.ts: der Doc-Kommentar verspricht „Streaming
+    (gunzip → tar → putArchive), kein GB-Buffer im RAM", aber `stream.on
+    ("data")` sammelt jeden Tar-Eintrag vollständig in `bufs` und übergibt
+    ihn erst am Stück an `pack.entry`. Eine einzelne große Datei im Archiv
+    geht damit 1:1 in den Heap — begrenzt erst durch `config.importMaxBytes`
+    (Default 10 GiB). Entweder `pack.entry(header)` als Schreib-Stream nutzen
+    (tar-stream kann das) oder den Kommentar korrigieren.
+
+(7) modules/world/service.ts `repackWorld`: ersetzt das erste Pfadsegment
+    durch den Zielnamen (`header.name.indexOf("/")`). Bei einem FLACHEN
+    Archiv (`tar czf w.tgz *` im Welt-Ordner: Einträge `level.dat`,
+    `region/…`) hat `level.dat` keinen Slash → `rest = ""` → der Eintrag
+    landet als DATEI namens `<name>`, und `region/r.0.0.mca` verliert sein
+    `region/`. Der `sawLevel`-Check greift nicht (`/\/level\.dat$/` matcht
+    nicht) und der Upload endet in „Archiv enthält keine level.dat" — obwohl
+    genau eine drin ist. Fehlermeldung oder Behandlung des Wrapper-losen
+    Falls korrigieren (Muster: `scanArchive` in servers/import.ts erkennt
+    einen fehlenden Wrapper-Ordner bereits korrekt).
+
+(8) modules/mods/routes.ts `installSchema`: `projectId: z.string().min(1)
+    .max(64)` ohne Zeichenvorrat, interpoliert in modules/mods/service.ts
+    ungeprüft in den URL-Pfad (`/project/${projectId}/version`). Auf einen
+    Modrinth-Slug/ID-Zeichenvorrat einschränken.
+
+(9) modules/auth/routes.ts `/api/logout`: löscht nur das Cookie, widerruft die
+    Sitzung serverseitig nicht (`sessionVersion` bleibt). Ein vor dem Logout
+    kopiertes Cookie bleibt die vollen 7 Tage gültig. Der Mechanismus zum
+    Widerrufen existiert schon und wird von 2FA/Passwortänderung genutzt —
+    entscheiden, ob Logout ihn auch nutzen soll (Nachteil: meldet ALLE
+    Geräte ab) oder ob das dokumentiert akzeptiert wird.
+
+(10) modules/tokens/routes.ts: `/api/tokens` hängt nur `authenticate` +
+     `requireRole("ADMIN")` ein, NICHT `requireSession`. Ein gestohlenes
+     Admin-Token kann sich damit selbst weitere Tokens ausstellen und so
+     überleben, dass das ursprüngliche widerrufen wird. `requireSession`
+     existiert genau für diesen Fall (siehe modules/twofa/routes.ts) und
+     sollte mindestens auf POST/DELETE gelten.
 ```
