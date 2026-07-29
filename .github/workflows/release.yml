@@ -80,4 +80,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           # Getrennte Cache-Scopes pro Image, sonst überschreiben sie sich.
           cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          # ignore-error: der GHA-Cache-Export ist reine Build-Beschleunigung,
+          # kein Korrektheitsmerkmal — Image wird davor bereits gepusht. Ohne
+          # dieses Flag lässt ein bekanntes BuildKit/GHA-Cache-Flake ("error
+          # writing layer blob: not_found") den ganzen Job fehlschlagen, obwohl
+          # das Image längst erfolgreich in der Registry liegt.
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }},ignore-error=true
