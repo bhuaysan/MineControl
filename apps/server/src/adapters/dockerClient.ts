@@ -3,6 +3,10 @@ import Docker from "dockerode";
 /**
  * Gemeinsame Dockerode-Instanz. Spricht standardmäßig den lokalen Socket
  * `/var/run/docker.sock` an (Root-Äquivalent — siehe PLANNING.md §7).
+ * Produktiv (docker-compose.yml) zeigt `DOCKER_HOST` stattdessen auf den
+ * `docker-proxy`-Container, der den echten Socket hält und nur die von
+ * MineControl genutzten API-Gruppen durchreicht — dockerode/docker-modem
+ * liest `DOCKER_HOST` automatisch, kein Code-Unterschied nötig.
  */
 export const docker = new Docker();
 

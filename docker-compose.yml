@@ -1,11 +1,19 @@
 # MineControl — Produktiv-Deployment.
 #
-# Zwei Container:
-#   app  — Fastify-Backend (API + WebSocket), erzeugt/steuert die Minecraft-
-#          Container über den gemounteten Docker-Socket.
-#   web  — Caddy: liefert die SPA aus und terminiert TLS (Reverse-Proxy).
+# Drei Container:
+#   app          — Fastify-Backend (API + WebSocket), erzeugt/steuert die
+#                  Minecraft-Container über den docker-proxy (s. u.).
+#   web          — Caddy: liefert die SPA aus und terminiert TLS (Reverse-Proxy).
+#   docker-proxy — einziger Container mit Zugriff auf /var/run/docker.sock;
+#                  reicht nur die von MineControl tatsächlich genutzten
+#                  API-Gruppen durch (siehe Kommentar dort). `app` selbst
+#                  bekommt den Socket NICHT mehr gemountet und läuft als
+#                  unprivilegierter User (siehe deploy/entrypoint.sh) — beides
+#                  wäre ohne diesen Proxy nicht miteinander vereinbar, da ein
+#                  nicht-root-User den Socket nur über eine (host-abhängige,
+#                  fragile) passende Docker-Gruppen-GID lesen könnte.
 #
-# Warum `network_mode: host` für app?
+# Warum `network_mode: host` für app (und docker-proxy)?
 #   Die verwalteten Minecraft-Container publizieren ihre Ports bewusst nur an
 #   127.0.0.1 des Hosts (Security-Design, PLANNING.md §7). Das Backend erreicht
 #   sie per RCON/Ping über 127.0.0.1:<port>. Mit Host-Networking ist das
@@ -15,6 +23,54 @@
 # Vorbereitung: `.env` aus `.env.example` erzeugen und Secrets setzen.
 
 services:
+  docker-proxy:
+    # Pinned auf eine konkrete Version, nicht `:latest` — dieser Container hat
+    # (eingeschränkten) Zugriff auf den Docker-Socket, ein automatisch
+    # gezogener neuer Tag soll das nicht unbemerkt verändern.
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    restart: unless-stopped
+    network_mode: host
+    # Winziger HAProxy-Prozess — reichlich Puffer, aber trotzdem eine Grenze,
+    # damit ein kompromittierter/fehlkonfigurierter Proxy nicht den Host
+    # mitreißen kann.
+    mem_limit: 64m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      # Nur an Loopback binden — von außen (auch nicht von anderen Hosts im
+      # LAN) erreichbar, nur von `app` auf demselben Host über 127.0.0.1.
+      BIND_CONFIG: "127.0.0.1:2375"
+      LOG_LEVEL: notice
+      # Exakt die API-Gruppen, die MineControl nutzt (Container-Lifecycle,
+      # Exec/Logs/Archive, Netzwerke, Volumes, Image-Pull/-Liste) — bewusst
+      # NICHT: SWARM, SECRETS, CONFIGS, SERVICES/NODES/TASKS, PLUGINS,
+      # BUILD/COMMIT, SYSTEM, AUTH, SESSION. Deckt nicht jedes Risiko ab (ein
+      # erlaubter `containers/create` mit `--privileged`/Host-Root-Bind bleibt
+      # root-äquivalent — das ist MineControls Kernfunktion, kein Proxy kann
+      # das ohne die Anwendung selbst einzuschränken), reduziert aber die
+      # erreichbare Docker-API auf das für den Betrieb Nötige.
+      CONTAINERS: 1
+      EXEC: 1
+      IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
+      POST: 1
+      # Ungenutzt — explizit abschalten, obwohl das Image es standardmäßig
+      # erlaubt (VERSION/PING bleiben an, MineControl nutzt keine Events).
+      EVENTS: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2375/_ping"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
   app:
     # Standard: vorgebautes Multi-Arch-Image aus GHCR (`docker compose pull`).
     # Der `build:`-Block bleibt als Fallback für lokale Builds erhalten
@@ -27,16 +83,55 @@ services:
       network: host
     restart: unless-stopped
     network_mode: host
+    # Grenzen gegen einen durchgehenden Import (Default-Cap 10 GiB,
+    # IMPORT_MAX_MB) oder einen Leak, der sonst den ganzen Host OOMen bzw.
+    # CPU-hungrig machen könnte — und damit auch die verwalteten
+    # Minecraft-Server mitreißt. Über .env anpassbar (Hardware-abhängig).
+    mem_limit: ${APP_MEM_LIMIT:-1g}
+    cpus: ${APP_CPU_LIMIT:-2}
+    # Muss länger sein als der interne Force-Exit-Timer (index.ts, 10 s) —
+    # sonst killt Docker den Prozess, bevor der eigene Shutdown-Pfad greifen
+    # kann, und der sauber protokollierte Grund (SIGTERM-Log) geht verloren.
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    depends_on:
+      docker-proxy:
+        condition: service_healthy
+    healthcheck:
+      # Readiness statt Liveness: prüft DB + Docker-Erreichbarkeit mit (health.ts).
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
     environment:
       NODE_ENV: production
       # Nur auf dem Loopback lauschen — von außen kommt man ausschließlich
       # über Caddy (TLS) rein.
       HOST: 127.0.0.1
       PORT: "3000"
+      # dockerode liest DOCKER_HOST automatisch (siehe adapters/dockerClient.ts)
+      # — spricht den docker-proxy-Container statt direkt den Host-Socket an.
+      DOCKER_HOST: tcp://127.0.0.1:2375
       DATABASE_URL: "file:/data/dev.db"
       BACKUP_DIR: /data/backups
       IMPORT_DIR: /data/imports
       IMPORT_STAGING_DIR: /data/imports/.staging
+      # Bewusst ein eigenes Volume (mc-db-backups), NICHT unter /data: ein
+      # Verlust von mc-data darf nicht die DB-Snapshots gleich mitreißen.
+      DB_BACKUP_DIR: /db-backups
+      DB_BACKUP_CRON: ${DB_BACKUP_CRON:-0 3 * * *}
+      DB_BACKUP_RETENTION: ${DB_BACKUP_RETENTION:-14}
       IMPORT_MAX_MB: ${IMPORT_MAX_MB:-10240}
       MODS_MAX_MB: ${MODS_MAX_MB:-200}
       WEB_ORIGIN: ${MC_WEB_ORIGIN:-https://localhost}
@@ -46,10 +141,11 @@ services:
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD in .env setzen (Erststart-Admin)}
       CF_API_KEY: ${CF_API_KEY:-}
     volumes:
-      # Persistente Daten: SQLite-DB, Backups, Import-Staging.
+      # Persistente Daten: SQLite-DB, Welt-Backups, Import-Staging.
       - mc-data:/data
-      # Docker-Socket = Root-Äquivalent auf dem Host (PLANNING.md §7).
-      - /var/run/docker.sock:/var/run/docker.sock
+      # Separates Volume für die automatischen DB-Snapshots (dbBackup.ts) —
+      # absichtlich getrennt von mc-data, siehe Kommentar bei DB_BACKUP_DIR.
+      - mc-db-backups:/db-backups
 
   web:
     image: ghcr.io/bhuaysan/minecontrol-web:${MC_IMAGE_TAG:-latest}
@@ -59,8 +155,23 @@ services:
       network: host
     restart: unless-stopped
     network_mode: host
+    mem_limit: ${WEB_MEM_LIMIT:-256m}
+    cpus: ${WEB_CPU_LIMIT:-1}
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
-      - app
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "-o", "/dev/null", "https://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     environment:
       # localhost = interne CA (LAN); eigene Domain = automatisches Let's Encrypt.
       MC_SITE_ADDRESS: ${MC_SITE_ADDRESS:-localhost}
@@ -71,5 +182,6 @@ services:
 
 volumes:
   mc-data:
+  mc-db-backups:
   caddy-data:
   caddy-config:

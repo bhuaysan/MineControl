@@ -81,6 +81,17 @@ export const config = {
   /** Verzeichnis für Server-Backups (tar.gz je Server). */
   backupDir: optional("BACKUP_DIR", "./backups"),
   /**
+   * Verzeichnis für die automatischen Snapshots der Control-Plane-DB
+   * (Benutzer, Secrets, Servertopologie). Bewusst NICHT unter `backupDir` —
+   * ein Verlust des einen Volumes darf nicht DB und Welt-Backups gleichzeitig
+   * mitreißen (siehe docker-compose.yml: eigenes Volume `mc-db-backups`).
+   */
+  dbBackupDir: optional("DB_BACKUP_DIR", "./backups-db"),
+  /** Cron-Ausdruck für den automatischen DB-Snapshot. Default: täglich 03:00. */
+  dbBackupCron: optional("DB_BACKUP_CRON", "0 3 * * *"),
+  /** Wie viele DB-Snapshots aufgehoben werden, bevor die ältesten gelöscht werden. */
+  dbBackupRetention: optionalInt("DB_BACKUP_RETENTION", 14, { min: 1, max: 3650 }),
+  /**
    * Verzeichnis mit server-seitig bereitgestellten Import-Archiven (.tar.gz).
    * Admins legen hier Fremd-Server-Verzeichnisse ab, um sie beim Erstellen zu
    * importieren (Migration großer Welten ohne Browser-Upload).

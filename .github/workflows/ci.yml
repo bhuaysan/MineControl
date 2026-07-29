@@ -3,6 +3,9 @@ name: CI
 on:
   push:
   pull_request:
+  # Wiederverwendbar: release.yml ruft diesen Workflow als Gate auf, damit ein
+  # fehlgeschlagener Typecheck/Lint/Test niemals ein Image nach GHCR published.
+  workflow_call:
 
 # Laufende Läufe für denselben Ref abbrechen, wenn neu gepusht wird.
 concurrency:

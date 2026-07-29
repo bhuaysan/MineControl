@@ -57,6 +57,15 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 WORKDIR /app/apps/server
 EXPOSE 3000
+# Readiness statt Liveness (siehe health.ts) — docker-compose.yml überschreibt
+# das Timing, dieser Default greift auch bei einem reinen `docker run`.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+# Kein `USER node` hier: der Container muss beim allerersten Start (und bei
+# Upgrades von einer älteren, root-basierten Version) einmalig die
+# Eigentümerschaft der gemounteten Volumes übernehmen können (siehe
+# entrypoint.sh). Migrations- und App-Prozess selbst laufen danach über
+# `setpriv` dauerhaft als `node` (uid 1000) — nicht mehr root.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # ---------------------------------------------------------------------------

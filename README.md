@@ -93,8 +93,14 @@ pinnen via `MC_IMAGE_TAG` in `.env` (z. B. `MC_IMAGE_TAG=1.2.0` oder
 
 ### Betriebshinweise (bitte lesen)
 
-- **Vertrauenswürdige Umgebung:** Das Backend mountet `/var/run/docker.sock`
-  (= Root-Äquivalent auf dem Host). MineControl daher nur im LAN/VPN bzw. in
+- **Vertrauenswürdige Umgebung:** Nur der `docker-proxy`-Container mountet
+  `/var/run/docker.sock`, gibt aber nur die von MineControl genutzten
+  API-Gruppen durch (Container/Exec/Netzwerke/Volumes/Images — nicht
+  Swarm/Secrets/Build/System). `app` selbst hat keinen Socket-Zugriff mehr und
+  läuft als unprivilegierter User. Das schließt die Kernfunktion aber nicht
+  vollständig ein: Container mit beliebigen Bind-Mounts/`--privileged` zu
+  erzeugen ist genau das, wofür MineControl den Socket braucht, und bleibt
+  root-äquivalent. MineControl daher weiterhin nur im LAN/VPN bzw. in
   vertrauenswürdiger Umgebung betreiben.
 - **Host-Networking (Linux):** Der `app`-Container nutzt `network_mode: host`.
   Die verwalteten Minecraft-Container binden ihre Ports bewusst nur an
@@ -103,17 +109,30 @@ pinnen via `MC_IMAGE_TAG` in `.env` (z. B. `MC_IMAGE_TAG=1.2.0` oder
   kommt man ausschließlich über Caddy (TLS) rein.
 - **TLS-Pflicht:** Session-Cookies werden produktiv mit `Secure` gesetzt — der
   Zugriff muss über HTTPS erfolgen (das erledigt Caddy).
-- **Persistente Daten** (SQLite-DB, Backups, Import-Staging) liegen im Named
-  Volume `mc-data`. Beim allerersten Start wird der Admin aus
+- **Persistente Daten** (SQLite-DB, Welt-Backups, Import-Staging) liegen im
+  Named Volume `mc-data`. Beim allerersten Start wird der Admin aus
   `SEED_ADMIN_USER`/`SEED_ADMIN_PASSWORD` angelegt.
+- **DB-Snapshots:** Zusätzlich zu den Welt-Backups (im UI) sichert MineControl
+  täglich (`DB_BACKUP_CRON`, Default 03:00) einen konsistenten Snapshot der
+  Control-Plane-DB selbst — Benutzer, Secrets, Servertopologie — in ein
+  eigenes Volume `mc-db-backups`, getrennt von `mc-data`. Für eine echte
+  Ausfallsicherheit trotzdem regelmäßig beide Volumes extern sichern, z. B.:
+  `docker run --rm -v mc-db-backups:/from -v /pfad/auf/host:/to alpine cp -a /from/. /to/`.
 
 <details>
 <summary><strong>Wie ist das Deployment aufgebaut?</strong></summary>
 
-MineControl läuft als zwei Container (siehe `docker-compose.yml`):
+MineControl läuft als drei Container (siehe `docker-compose.yml`):
 
 - **`app`** — Fastify-Backend (REST + WebSocket), erzeugt/steuert die
-  Minecraft-Container über den gemounteten Docker-Socket.
+  Minecraft-Container über `docker-proxy` (nicht mehr direkt über den Socket).
+  Läuft als unprivilegierter User `node`; nur beim allerersten Start bzw. bei
+  einem Upgrade übernimmt der Entrypoint kurz als root die Eigentümerschaft
+  neuer/bestehender Volumes, bevor er per `setpriv` dauerhaft auf `node`
+  wechselt (siehe `deploy/entrypoint.sh`).
+- **`docker-proxy`** — einziger Container mit Zugriff auf
+  `/var/run/docker.sock`, reicht nur eingeschränkte API-Gruppen durch
+  ([tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)).
 - **`web`** — Caddy: liefert die SPA aus und terminiert TLS (Reverse-Proxy).
 
 Die Images werden von GitHub Actions (`.github/workflows/release.yml`) bei

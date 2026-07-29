@@ -10,6 +10,7 @@ import { logger, loggerOptions } from "./logger.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { auditRoutes } from "./modules/audit/routes.js";
 import { backupRoutes } from "./modules/backups/routes.js";
+import { startDbBackupScheduler } from "./modules/backups/dbBackup.js";
 import { fileRoutes } from "./modules/files/routes.js";
 import { luckPermsRoutes } from "./modules/luckperms/routes.js";
 import { metricRoutes } from "./modules/metrics/routes.js";
@@ -106,9 +107,12 @@ async function main(): Promise<void> {
   // Erststart-Admin anlegen, falls noch kein Benutzer existiert (idempotent).
   await ensureSeedAdmin();
 
-  // Hintergrunddienste: geplante Tasks (cron) + periodische Metrik-Erfassung.
+  // Hintergrunddienste: geplante Tasks (cron), periodische Metrik-Erfassung
+  // und der automatische Snapshot der Control-Plane-DB (Benutzer, Secrets,
+  // Servertopologie — von den Welt-Backups getrennt, siehe dbBackup.ts).
   await startScheduler();
   startMetricSampler();
+  startDbBackupScheduler();
 
   // Kontrollierter Shutdown statt Weiterlaufen in undefiniertem Zustand: eine
   // uncaughtException/unhandledRejection kann den Prozess (Docker-Steuerung,
