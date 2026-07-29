@@ -65,6 +65,42 @@ Port **80** und **443** müssen dafür aus dem Internet erreichbar sein.
 </details>
 
 <details>
+<summary><strong>Zugriff nur über VPN/Mesh (z. B. Netbird/Tailscale) statt öffentlichem Internet?</strong></summary>
+
+Empfohlen, wenn ein öffentlicher Server (z. B. bei Netcup) nur für die eigenen,
+bereits per VPN verbundenen Geräte erreichbar sein soll — keine öffentliche
+Domain nötig, kein Port 80/443 im Internet-Firewall des Hosters.
+
+Da `app`/`web`/`docker-proxy` mit `network_mode: host` laufen, hört Caddy
+automatisch auch auf dem VPN-Interface (z. B. `netbird0`/`wt0`) — **ohne
+Änderung an `docker-compose.yml`**. Nötig ist nur:
+
+1. Beim Hoster (z. B. Netcup) **nur den VPN-Port freigeben**
+   (Netbird/WireGuard-Standard: `51820/UDP`) — **Port 80/443 in der externen
+   Firewall geschlossen lassen**. VPN-Traffic kommt getunnelt über den
+   freigegebenen UDP-Port an und landet lokal auf dem VPN-Interface; der
+   Hoster-Edge sieht den entschlüsselten HTTPS-Traffic gar nicht.
+2. `MC_SITE_ADDRESS` unverändert bei `"localhost"` lassen (oder auf die
+   VPN-IP setzen — funktional identisch). Eine echte Let's-Encrypt-Domain
+   funktioniert hier ohnehin nicht: Zertifikate für private/CGNAT-Adressen
+   (Netbirds `100.64.0.0/10`-Range) stellt Let's Encrypt nicht aus.
+3. Von jedem VPN-verbundenen Gerät: `https://<vpn-ip-des-servers>` öffnen.
+
+Einziger Nachteil: Browser-Warnung wegen des selbstsignierten Zertifikats
+(wie bei `localhost`). Lässt sich ohne öffentliche Domain sauber vermeiden,
+indem man Caddys eigenes Root-Zertifikat einmalig auf die zugreifenden
+Geräte verteilt:
+
+```bash
+docker compose cp web:/data/caddy/pki/authorities/local/root.crt ./minecontrol-ca.crt
+```
+
+`minecontrol-ca.crt` danach als vertrauenswürdige CA in den Zertifikatsspeicher
+jedes Geräts importieren (Windows/macOS/Linux-Systemspeicher oder
+Firefox-eigener Store) — danach ist `https://<vpn-ip>` ohne Warnung grün.
+</details>
+
+<details>
 <summary><strong>Fehler beim <code>docker compose pull</code> (Auth/Not found)?</strong></summary>
 
 GHCR-Pakete sind anfangs **privat**. Entweder in den GitHub-Package-
@@ -140,6 +176,69 @@ jedem Push auf `main` und bei Versions-Tags (`v*`) automatisch als **Multi-Arch*
 (amd64 + arm64) nach GHCR gebaut: `ghcr.io/bhuaysan/minecontrol-app` und
 `…/minecontrol-web`.
 </details>
+
+### Umgebungsvariablen (Referenz)
+
+**Produktiv (`.env` im Repo-Root, wirkt über `docker-compose.yml`):**
+
+| Variable                    | Pflicht | Default             | Beschreibung                                                                                                                             |
+| --------------------------- | ------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `SESSION_SECRET`            | ✅ Ja   | –                   | Signiert Session-Cookies. ≥32 Zeichen, zufällig (`openssl rand -base64 48`).                                                             |
+| `ENCRYPTION_KEY`            | ✅ Ja   | –                   | 64 Hex-Zeichen (32 Byte), verschlüsselt gespeicherte Secrets (RCON-Passwörter, SMTP, TOTP). **Nicht nachträglich änderbar.**             |
+| `SEED_ADMIN_USER`           | Nein    | `admin`             | Benutzername des Erststart-Admins.                                                                                                       |
+| `SEED_ADMIN_PASSWORD`       | ✅ Ja   | –                   | Passwort des Erststart-Admins. Darf nicht `changeme` sein — Container startet sonst produktiv nicht.                                     |
+| `MC_SITE_ADDRESS`           | Nein    | `localhost`         | Domain/Adresse für Caddys Auto-HTTPS. `localhost` → interne CA (Browser-Warnung); echte Domain → automatisches Let's-Encrypt-Zertifikat. |
+| `MC_WEB_ORIGIN`             | Nein    | `https://localhost` | CORS-Origin (→ `WEB_ORIGIN` im `app`-Container). Bei gleicher Herkunft (Standard) unkritisch.                                            |
+| `MC_IMAGE_TAG`              | Nein    | `latest`            | GHCR-Image-Tag, z. B. `1.2.0` oder `sha-abc1234`, statt `latest`.                                                                        |
+| `IMPORT_MAX_MB`             | Nein    | `10240`             | Obergrenze (MB) für Server-Import-Uploads/entpackte Archivgröße.                                                                         |
+| `MODS_MAX_MB`               | Nein    | `200`               | Obergrenze (MB) für Plugin-/Mod-Uploads.                                                                                                 |
+| `AUTO_RESTART_GRACE_MIN`    | Nein    | `5`                 | Minuten, die ein Docker-Server unerreichbar sein darf, bevor Auto-Restart greift.                                                        |
+| `AUTO_RESTART_MAX_ATTEMPTS` | Nein    | `3`                 | Max. aufeinanderfolgende Auto-Restart-Versuche, bevor aufgegeben wird.                                                                   |
+| `DB_BACKUP_CRON`            | Nein    | `0 3 * * *`         | Cron-Ausdruck für den täglichen Snapshot der Control-Plane-DB.                                                                           |
+| `DB_BACKUP_RETENTION`       | Nein    | `14`                | Anzahl aufgehobener DB-Snapshots, bevor die ältesten gelöscht werden.                                                                    |
+| `CF_API_KEY`                | Nein    | leer                | Eigener CurseForge-API-Key für Modpacks. Leer = eingebauter Key des itzg-Images.                                                         |
+| `APP_MEM_LIMIT`             | Nein    | `1g`                | Memory-Limit des `app`-Containers.                                                                                                       |
+| `APP_CPU_LIMIT`             | Nein    | `2`                 | CPU-Limit des `app`-Containers.                                                                                                          |
+| `WEB_MEM_LIMIT`             | Nein    | `256m`              | Memory-Limit des `web`-Containers (Caddy).                                                                                               |
+| `WEB_CPU_LIMIT`             | Nein    | `1`                 | CPU-Limit des `web`-Containers (Caddy).                                                                                                  |
+
+<details>
+<summary><strong>Intern in <code>docker-compose.yml</code> fest verdrahtet (nicht über <code>.env</code> änderbar)</strong></summary>
+
+Diese Variablen bekommt der `app`-Container ebenfalls gesetzt, aber mit
+festem Wert statt `${...}`-Platzhalter — bewusst kein Betreiber-Tuning, da
+sie die Container-Topologie selbst beschreiben. Nur relevant, wenn man
+`docker-compose.yml` direkt anpasst:
+
+| Variable             | Wert (fest)              | Beschreibung                                                                        |
+| -------------------- | ------------------------ | ----------------------------------------------------------------------------------- |
+| `NODE_ENV`           | `production`             | Schaltet die Produktiv-Validierungen scharf (Platzhalter-Secrets, `Secure`-Cookie). |
+| `HOST`               | `127.0.0.1`              | Backend lauscht nur auf Loopback — von außen kommt man nur über Caddy rein.         |
+| `PORT`               | `3000`                   | Backend-Port.                                                                       |
+| `DOCKER_HOST`        | `tcp://127.0.0.1:2375`   | Ziel für dockerode — der `docker-proxy`-Container, nicht der rohe Socket.           |
+| `DATABASE_URL`       | `file:/data/dev.db`      | Prisma-Connection-String (SQLite).                                                  |
+| `BACKUP_DIR`         | `/data/backups`          | Ablage der Welt-Backups (tar.gz je Server).                                         |
+| `IMPORT_DIR`         | `/data/imports`          | Server-seitig bereitgestellte Import-Archive.                                       |
+| `IMPORT_STAGING_DIR` | `/data/imports/.staging` | Staging für per Browser hochgeladene Import-Archive.                                |
+| `DB_BACKUP_DIR`      | `/db-backups`            | Ablage der automatischen DB-Snapshots (eigenes Volume `mc-db-backups`).             |
+
+</details>
+
+**Lokale Entwicklung (`apps/server/.env`, nur `pnpm dev` — nicht docker-compose):**
+
+Dieselben inhaltlichen Regeln wie oben (Secrets, Limits, Backups), aber
+direkt von `config.ts` gelesen statt über `docker-compose.yml` gereicht —
+daher auch ein paar zusätzliche, hier sinnvolle Variablen:
+
+| Variable                                                                                                                                     | Pflicht  | Default                                                           | Beschreibung                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PORT`                                                                                                                                       | Nein     | `3000`                                                            | Backend-Port. Bei Kollision z. B. `3055` setzen.                                                                                                 |
+| `HOST`                                                                                                                                       | Nein     | `127.0.0.1`                                                       | Bind-Adresse des Backends.                                                                                                                       |
+| `DATABASE_URL`                                                                                                                               | ✅ Ja    | –                                                                 | Prisma-Connection-String, i. d. R. `file:./dev.db`.                                                                                              |
+| `WEB_ORIGIN`                                                                                                                                 | Nein     | `http://localhost:5173`                                           | CORS-Origin des Vite-Dev-Servers.                                                                                                                |
+| `BACKUP_DIR` / `IMPORT_DIR` / `IMPORT_STAGING_DIR` / `DB_BACKUP_DIR`                                                                         | Nein     | `./backups` / `./imports` / `./imports/.staging` / `./backups-db` | Lokale Pfade statt Volumes.                                                                                                                      |
+| Alle übrigen (`SESSION_SECRET`, `ENCRYPTION_KEY`, `SEED_ADMIN_*`, `*_MAX_MB`, `AUTO_RESTART_*`, `DB_BACKUP_CRON`/`_RETENTION`, `CF_API_KEY`) | wie oben | wie oben                                                          | Gleiche Bedeutung wie im Produktiv-Abschnitt.                                                                                                    |
+| `MC_SERVER_PORT`                                                                                                                             | Nein     | `3000`                                                            | **Keine `.env`-Variable** — Shell-Variable für `pnpm dev`, zeigt den Vite-Proxy auf einen abweichenden Backend-Port (`apps/web/vite.config.ts`). |
 
 ---
 
