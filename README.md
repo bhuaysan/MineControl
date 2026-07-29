@@ -80,10 +80,23 @@ automatisch auch auf dem VPN-Interface (z. B. `netbird0`/`wt0`) — **ohne
    Firewall geschlossen lassen**. VPN-Traffic kommt getunnelt über den
    freigegebenen UDP-Port an und landet lokal auf dem VPN-Interface; der
    Hoster-Edge sieht den entschlüsselten HTTPS-Traffic gar nicht.
-2. `MC_SITE_ADDRESS` unverändert bei `"localhost"` lassen (oder auf die
-   VPN-IP setzen — funktional identisch). Eine echte Let's-Encrypt-Domain
-   funktioniert hier ohnehin nicht: Zertifikate für private/CGNAT-Adressen
-   (Netbirds `100.64.0.0/10`-Range) stellt Let's Encrypt nicht aus.
+2. `MC_SITE_ADDRESS` in der `.env` auf die eigene VPN-IP setzen (**nicht**
+   bei `"localhost"` belassen!) — Caddy verwaltet TLS-Zertifikat und Routing
+   nur für den dort konfigurierten Namen. Bleibt es bei `"localhost"`, bricht
+   der TLS-Handshake bei Zugriff über die IP sofort ab, noch bevor überhaupt
+   eine Zertifikatswarnung erscheint (verifiziert: `TLS alert, internal error`).
+   `MC_WEB_ORIGIN` muss exakt mitgezogen werden, sonst schlägt CORS fehl:
+   ```bash
+   MC_SITE_ADDRESS="100.x.x.x"        # eigene VPN-IP statt "localhost"
+   MC_WEB_ORIGIN="https://100.x.x.x"  # muss zum Zugriffs-Origin passen
+   ```
+   Danach `docker compose up -d` — reine Laufzeit-Env, kein Rebuild nötig.
+   Eine echte Let's-Encrypt-Domain funktioniert hier ohnehin nicht:
+   Zertifikate für private/CGNAT-Adressen (Netbirds `100.64.0.0/10`-Range)
+   stellt Let's Encrypt nicht aus. Zusätzlich auch lokal über `localhost`
+   zugreifen? Komma-getrennt geht `MC_SITE_ADDRESS="localhost, 100.x.x.x"` —
+   `MC_WEB_ORIGIN` erlaubt aktuell aber nur einen Origin, gilt dann nur für
+   einen der beiden Zugriffswege.
 3. Von jedem VPN-verbundenen Gerät: `https://<vpn-ip-des-servers>` öffnen.
 
 Einziger Nachteil: Browser-Warnung wegen des selbstsignierten Zertifikats
