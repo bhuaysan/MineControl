@@ -13,6 +13,11 @@ bestehender Welten, Benutzerrollen, mehrsprachige Oberfläche (de/en).
 > _Spieler_ brauchen MineControl nicht — sie verbinden sich wie gewohnt per
 > Client zur Server-Adresse.
 
+📖 **[Vollständiges Nutzerhandbuch](docs/README.md)** — jede Funktion der
+Oberfläche im Detail erklärt (Server, Netzwerke, Welten, Mods, Backups,
+Benutzer, Benachrichtigungen, …), mit Beispielen und Feld-Referenzen. Diese
+README hier deckt nur Installation/Deployment ab.
+
 ---
 
 ## 🚀 Schnellstart (Betreiber)
@@ -318,7 +323,8 @@ packages/
 | `pnpm db:migrate`                             | Prisma-Migration + Seed            |
 | `pnpm --filter @minecontrol/server db:studio` | Prisma Studio                      |
 
-Mehr Kontext: [PLANNING.md](PLANNING.md) · [FRONTEND.md](FRONTEND.md)
+Mehr Kontext: [PLANNING.md](PLANNING.md) · [FRONTEND.md](FRONTEND.md) ·
+[Nutzerhandbuch](docs/README.md)
 
 ---
 
